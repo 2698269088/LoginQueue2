@@ -1,0 +1,5 @@
+# 当前子服务器在代理端中的名称
+server-name: "main"
+
+# 向代理端广播服务器信息的周期（秒）
+refresh-interval: 5

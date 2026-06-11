@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="maven-antrun-" default="main">
+  <target name="main">
+    <mkdir dir="C:\Users\26982\Desktop\LoginSequence\LoginSequence2Online/../dist" />
+    <copy file="C:\Users\26982\Desktop\LoginSequence\LoginSequence2Online\target/LoginSequence2Online-1.0.1.jar" todir="C:\Users\26982\Desktop\LoginSequence\LoginSequence2Online/../dist" />
+  </target>
+</project>

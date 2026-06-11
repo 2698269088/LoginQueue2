@@ -1,0 +1,39 @@
+name: LoginSequence
+version: '1.0.1'
+main: top.mcocet.loginsequence2.LoginSequence
+api-version: '1.13'
+authors: [MCOCET]
+description: 登录队列
+website: https://home.mcocet.top
+
+# BungeeCord 自定义消息通道
+channels:
+  - LoginSequence:ConnectOther
+  - LoginSequence:ServerInfo
+commands:
+  logseq:
+    description: LoginSequence 主命令
+    usage: /logseq <skip|list|status|help>
+    aliases: [ls]
+  ls:
+    description: LoginSequence 主命令别名
+    usage: /ls <skip|list|status|help>
+  join:
+    description: 加入登录排队队列
+    usage: /join
+permissions:
+  loginsequence.admin.skip:
+    description: 允许跳过排队
+    default: op
+  loginsequence.admin.list:
+    description: 允许查看排队列表
+    default: op
+  loginsequence.admin.status:
+    description: 允许查看服务器状态
+    default: op
+  loginsequence.admin.refresh:
+    description: 允许手动刷新服务器状态
+    default: op
+  loginsequence.admin.bypass:
+    description: 不受登录服限制
+    default: op
