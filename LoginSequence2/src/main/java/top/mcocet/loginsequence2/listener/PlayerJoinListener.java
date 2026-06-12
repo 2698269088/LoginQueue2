@@ -104,6 +104,20 @@ public class PlayerJoinListener implements Listener {
         int position = getPosition(uuid);
         int online = messenger.getMainServerPlayerCount();
         int max = messenger.getMainServerMaxPlayers();
+        // 多服务器模式下显示总在线人数
+        int totalOnline = 0;
+        int totalMax = 0;
+        for (BungeeMessenger.ServerStatus status : messenger.getAllServerStatus().values()) {
+            if (status.isOnline()) {
+                totalOnline += status.getOnlinePlayers();
+                totalMax += status.getMaxPlayers();
+            }
+        }
+        // 如果有多个服务器在线，显示总数
+        if (totalMax > 0 && messenger.getAllServerStatus().size() > 1) {
+            online = totalOnline;
+            max = totalMax;
+        }
         player.sendMessage(languageManager.getMessage("waiting",
                 "position", String.valueOf(position),
                 "online", String.valueOf(online),
@@ -177,7 +191,7 @@ public class PlayerJoinListener implements Listener {
         }
         allowedPlayers.add(player.getUniqueId());
         player.sendMessage(languageManager.getMessage("entering"));
-        messenger.connectToMainServer(player);
+        messenger.connectToOptimalServer(player);
     }
 
     public List<String> getQueuePlayerNames() {
@@ -248,38 +262,44 @@ public class PlayerJoinListener implements Listener {
     }
 
     private void processQueue() {
+        // 计算所有在线主服务器的总人数和总容量
+        int totalMax = 0;
+        int totalOnline = 0;
+        boolean anyOnline = false;
+        for (BungeeMessenger.ServerStatus status : messenger.getAllServerStatus().values()) {
+            if (status.isOnline()) {
+                anyOnline = true;
+                int max = status.getMaxPlayers();
+                int online = status.getOnlinePlayers();
+                if (max <= 0) {
+                    max = plugin.getConfig().getInt("queue.max-online", 50);
+                }
+                totalMax += max;
+                totalOnline += online;
+            }
+        }
+
         if (plugin.isDebug()) {
-            plugin.getLogger().info("处理队列: 主服务器在线=" + messenger.isMainServerOnline()
-                    + " 主服人数=" + messenger.getMainServerPlayerCount()
-                    + " 最大=" + messenger.getMainServerMaxPlayers()
+            plugin.getLogger().info("处理队列: 有在线服务器=" + anyOnline
+                    + " 总在线=" + totalOnline
+                    + " 总容量=" + totalMax
                     + " 队列大小=" + waitingQueue.size());
         }
 
-        if (!messenger.isMainServerOnline()) {
+        if (!anyOnline) {
             if (plugin.isDebug()) {
-                plugin.getLogger().info("主服务器离线，暂停处理队列");
+                plugin.getLogger().info("所有主服务器离线，暂停处理队列");
             }
             return;
         }
 
-        int maxOnline = messenger.getMainServerMaxPlayers();
-        int mainOnline = messenger.getMainServerPlayerCount();
-
-        // 如果代理端返回的最大玩家数为0（目标服无玩家时），使用本地配置作为备用
-        if (maxOnline <= 0) {
-            maxOnline = plugin.getConfig().getInt("queue.max-online", 50);
-            if (plugin.isDebug()) {
-                plugin.getLogger().info("代理端返回最大玩家数为0，使用本地配置: " + maxOnline);
-            }
-        }
-
         // 超过阈值时暂停放行
-        if ((double) mainOnline / maxOnline >= threshold) {
+        if (totalMax > 0 && (double) totalOnline / totalMax >= threshold) {
             notifyWaitingPlayers(languageManager.getMessage("threshold-reached"));
             return;
         }
 
-        int availableSlots = Math.max(0, maxOnline - mainOnline);
+        int availableSlots = Math.max(0, totalMax - totalOnline);
         if (plugin.isDebug()) {
             plugin.getLogger().info("可用槽位: " + availableSlots);
         }
@@ -298,7 +318,7 @@ public class PlayerJoinListener implements Listener {
             if (plugin.isDebug()) {
                 plugin.getLogger().info("放行玩家: " + player.getName());
             }
-            messenger.connectToMainServer(player);
+            messenger.connectToOptimalServer(player);
             availableSlots--;
         }
     }

@@ -112,21 +112,41 @@ public class LoginSequenceCommand implements CommandExecutor, TabCompleter {
         }
 
         BungeeMessenger messenger = plugin.getMessenger();
-        boolean online = messenger.isMainServerOnline();
-        int mainOnline = messenger.getMainServerPlayerCount();
-        int maxOnline = messenger.getMainServerMaxPlayers();
         double threshold = plugin.getConfig().getDouble("queue.threshold", 0.8);
+        String balanceStrategy = plugin.getConfig().getString("queue.balance-strategy", "LEAST_PLAYERS");
 
         sender.sendMessage(languageManager.getMessage("status-header"));
-        sender.sendMessage(languageManager.getMessage("status-main-server", "server", messenger.getMainServer()));
-        sender.sendMessage(languageManager.getMessage(online ? "status-online" : "status-offline"));
-        if (online) {
-            double ratio = maxOnline > 0 ? (double) mainOnline / maxOnline : 0;
-            sender.sendMessage(languageManager.getMessage("status-players", "online", String.valueOf(mainOnline), "max", String.valueOf(maxOnline)));
-            sender.sendMessage(languageManager.getMessage("status-ratio", "ratio", String.format("%.1f", ratio * 100)));
-            sender.sendMessage(languageManager.getMessage("status-threshold", "threshold", String.format("%.1f", threshold * 100)));
-            sender.sendMessage(languageManager.getMessage(ratio >= threshold ? "status-queue-paused" : "status-queue-normal"));
+
+        // 显示所有主服务器状态
+        java.util.Map<String, BungeeMessenger.ServerStatus> allStatus = messenger.getAllServerStatus();
+        if (allStatus.isEmpty()) {
+            sender.sendMessage(languageManager.getMessage("status-offline"));
+        } else {
+            int totalOnline = 0;
+            int totalMax = 0;
+            for (BungeeMessenger.ServerStatus status : allStatus.values()) {
+                boolean isOnline = messenger.isServerOnline(status.getServerName());
+                sender.sendMessage(languageManager.getMessage("status-main-server", "server", status.getServerName()));
+                sender.sendMessage(languageManager.getMessage(isOnline ? "status-online" : "status-offline"));
+                if (isOnline) {
+                    double ratio = status.getMaxPlayers() > 0 ? status.getLoadRatio() : 0;
+                    sender.sendMessage(languageManager.getMessage("status-players",
+                            "online", String.valueOf(status.getOnlinePlayers()),
+                            "max", String.valueOf(status.getMaxPlayers())));
+                    sender.sendMessage(languageManager.getMessage("status-ratio", "ratio", String.format("%.1f", ratio * 100)));
+                    totalOnline += status.getOnlinePlayers();
+                    totalMax += status.getMaxPlayers();
+                }
+            }
+            if (totalMax > 0) {
+                double totalRatio = (double) totalOnline / totalMax;
+                sender.sendMessage(ChatColor.GOLD + "总在线: " + totalOnline + "/" + totalMax
+                        + " (" + String.format("%.1f", totalRatio * 100) + "%)");
+                sender.sendMessage(languageManager.getMessage("status-threshold", "threshold", String.format("%.1f", threshold * 100)));
+                sender.sendMessage(languageManager.getMessage(totalRatio >= threshold ? "status-queue-paused" : "status-queue-normal"));
+            }
         }
+        sender.sendMessage(ChatColor.AQUA + "负载均衡策略: " + balanceStrategy);
         sender.sendMessage(languageManager.getMessage("status-queue-size", "size", String.valueOf(listener.getQueueSize())));
         sender.sendMessage(languageManager.getMessage("status-footer"));
         return true;
@@ -180,20 +200,52 @@ public class LoginSequenceCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        BungeeMessenger.ServerStatus status = messenger.getMainServerStatus();
-        if (status == null) {
+        java.util.Map<String, BungeeMessenger.ServerStatus> allStatus = messenger.getAllServerStatus();
+        if (allStatus.isEmpty()) {
             sender.sendMessage(languageManager.getMessage("main-server-no-data"));
             return true;
         }
 
-        sender.sendMessage(languageManager.getMessage("info-header", "server", status.getServerName()));
-        sender.sendMessage(languageManager.getMessage("info-status",
-                "status", status.isOnline() ? languageManager.getMessage("online") : languageManager.getMessage("offline")));
-        sender.sendMessage(languageManager.getMessage("info-players",
-                "online", String.valueOf(status.getOnlinePlayers()),
-                "max", String.valueOf(status.getMaxPlayers())));
-        sender.sendMessage(languageManager.getMessage("info-load",
-                "ratio", String.format("%.1f", status.getLoadRatio() * 100)));
+        // 当 UDP 启用且优先时，只显示 UDP 配置的服务器信息
+        boolean udpEnabled = plugin.getConfig().getBoolean("udp-sync.enabled", false);
+        String udpPriority = plugin.getConfig().getString("udp-sync.priority", "BC_CHANNEL");
+        boolean udpPreferred = udpEnabled && "UDP".equalsIgnoreCase(udpPriority);
+
+        java.util.List<String> udpServerNames = new java.util.ArrayList<>();
+        if (udpPreferred) {
+            for (java.util.Map<?, ?> map : plugin.getConfig().getMapList("udp-sync.servers")) {
+                Object nameObj = map.get("name");
+                if (nameObj != null) {
+                    udpServerNames.add(String.valueOf(nameObj));
+                }
+            }
+            // 兼容旧配置（单服务器模式）
+            if (udpServerNames.isEmpty() && plugin.getConfig().getString("udp-sync.host") != null) {
+                udpServerNames.add(plugin.getConfig().getString("queue.main-server", "main"));
+            }
+        }
+
+        boolean anyDisplayed = false;
+        for (BungeeMessenger.ServerStatus status : allStatus.values()) {
+            // UDP 优先模式下，过滤只显示 UDP 配置的服务器
+            if (udpPreferred && !udpServerNames.contains(status.getServerName())) {
+                continue;
+            }
+            anyDisplayed = true;
+            sender.sendMessage(languageManager.getMessage("info-header", "server", status.getServerName()));
+            sender.sendMessage(languageManager.getMessage("info-status",
+                    "status", status.isOnline() ? languageManager.getMessage("online") : languageManager.getMessage("offline")));
+            sender.sendMessage(languageManager.getMessage("info-players",
+                    "online", String.valueOf(status.getOnlinePlayers()),
+                    "max", String.valueOf(status.getMaxPlayers())));
+            sender.sendMessage(languageManager.getMessage("info-load",
+                    "ratio", String.format("%.1f", status.getLoadRatio() * 100)));
+        }
+
+        if (!anyDisplayed) {
+            sender.sendMessage(languageManager.getMessage("main-server-no-data"));
+            return true;
+        }
         sender.sendMessage(languageManager.getMessage("info-footer"));
         return true;
     }

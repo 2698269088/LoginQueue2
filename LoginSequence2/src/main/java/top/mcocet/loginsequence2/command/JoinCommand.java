@@ -5,6 +5,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import top.mcocet.loginsequence2.LoginSequence;
+import top.mcocet.loginsequence2.bungee.BungeeMessenger;
 import top.mcocet.loginsequence2.listener.PlayerJoinListener;
 import top.mcocet.loginsequence2.util.LanguageManager;
 
@@ -34,7 +35,15 @@ public class JoinCommand implements CommandExecutor {
             return true;
         }
 
-        if (!plugin.getMessenger().isMainServerOnline()) {
+        // 检查是否有任何主服务器在线
+        boolean anyOnline = false;
+        for (BungeeMessenger.ServerStatus status : plugin.getMessenger().getAllServerStatus().values()) {
+            if (status.isOnline()) {
+                anyOnline = true;
+                break;
+            }
+        }
+        if (!anyOnline) {
             player.sendMessage(languageManager.getMessage("main-offline"));
             return true;
         }

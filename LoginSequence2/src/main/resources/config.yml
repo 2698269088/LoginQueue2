@@ -7,12 +7,47 @@ enable-bungee-extension: true
 # 是否启用调试日志（输出详细的插件运行信息）
 debug: false
 
+# UDP 服务器信息同步配置
+udp-sync:
+  # 是否启用 UDP 服务器信息同步
+  enabled: false
+  # 信息获取优先级: BC_CHANNEL 先使用 BungeeCord 消息通道, UDP 先使用 UDP
+  priority: BC_CHANNEL
+  # UDP 请求超时时间（毫秒）
+  timeout: 3000
+  # 计划好的预共享密钥（用于加密传输通信密钥，防止窃听）
+  # 此密钥只能手动配置，不会通过网络传输，建议两端配置相同
+  # 建议修改为非预设密钥
+  planned-key: "loginsequence"
+  # 主服务器列表（支持多主服务器负载均衡）
+  # 老吕到使用多大厅的用户基本都是大型服务器
+  # 大概率也就有多个BC/VC端
+  # 所以这里仅通知BC/VC跳转到main-server配置的主服转移玩家
+  servers:
+    - name: "main1"
+      host: "127.0.0.1"
+      port: 16647
+      secret-key: ""
+      max-online: 50
+    - name: "main2"
+      host: "127.0.0.1"
+      port: 16648
+      secret-key: ""
+      max-online: 50
+    # - name: "main3"
+    #   host: "127.0.0.1"
+    #   port: 16649
+    #   secret-key: ""
+    #   max-online: 50
+
 # 登录队列配置
 queue:
-  # 主服务器在 BungeeCord 中的名称
+  # 主服务器在 BungeeCord 中的名称（单服务器模式使用，多服务器模式请使用 udp-sync.servers）
   main-server: "main"
-  # 主服务器最大可连接玩家数（通过配置文件设置）
+  # 主服务器最大可连接玩家数（通过配置文件设置，单服务器模式使用）
   max-online: 50
+  # 负载均衡策略: LEAST_PLAYERS 最少玩家, LEAST_LOAD 最低负载, ROUND_ROBIN 轮询, RANDOM 随机
+  balance-strategy: LEAST_PLAYERS
   # 排序优先级（越靠前优先级越高）
   # 支持 permission:xxx 和 name:xxx 两种匹配方式
   priority:

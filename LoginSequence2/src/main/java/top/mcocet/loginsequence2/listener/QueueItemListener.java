@@ -183,7 +183,22 @@ public class QueueItemListener implements Listener {
             return;
         }
 
-        // 先使用缓存状态快速拒绝（如果已知离线）
+        // UDP 优先模式下直接信任缓存，跳过实时检测
+        boolean udpPreferred = plugin.getConfig().getBoolean("udp-sync.enabled", false)
+                && "UDP".equalsIgnoreCase(plugin.getConfig().getString("udp-sync.priority", "BC_CHANNEL"));
+
+        if (udpPreferred) {
+            // UDP 优先：直接使用缓存状态
+            if (!plugin.getMessenger().isMainServerOnline()) {
+                player.sendMessage(languageManager.getMessage("main-offline"));
+                return;
+            }
+            listener.addPlayerToQueue(player);
+            player.sendMessage(languageManager.getMessage("joined-queue"));
+            return;
+        }
+
+        // 默认/BC 优先模式：先使用缓存状态快速拒绝
         if (!plugin.getMessenger().isMainServerOnline()) {
             player.sendMessage(languageManager.getMessage("main-offline"));
             return;
