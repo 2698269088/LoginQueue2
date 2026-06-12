@@ -14,13 +14,12 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class BungeeMessenger implements PluginMessageListener {
 
-    public static final String BUNGEE_CORD = "BungeeCord";
     /** 自定义消息通道：用于通知代理端将指定玩家转移到目标服务器 */
-    public static final String CHANNEL_CONNECT_OTHER = "LoginSequence:ConnectOther";
+    public static final String CHANNEL_CONNECT_OTHER = "loginsequence:connectother";
     /** 自定义消息通道：用于玩家主动请求连接到目标服务器 */
-    public static final String CHANNEL_CONNECT_REQUEST = "LoginSequence:ConnectRequest";
+    public static final String CHANNEL_CONNECT_REQUEST = "loginsequence:connectrequest";
     /** 自定义消息通道：用于获取指定服务器的状态信息 */
-    public static final String CHANNEL_SERVER_INFO = "LoginSequence:ServerInfo";
+    public static final String CHANNEL_SERVER_INFO = "loginsequence:serverinfo";
 
     private final LoginSequence plugin;
     private final String mainServer;
@@ -46,9 +45,6 @@ public class BungeeMessenger implements PluginMessageListener {
             return;
         }
 
-        plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, BUNGEE_CORD);
-        plugin.getServer().getMessenger().registerIncomingPluginChannel(plugin, BUNGEE_CORD, this);
-
         // 注册自定义消息通道
         plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_CONNECT_OTHER);
         plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_CONNECT_REQUEST);
@@ -60,9 +56,6 @@ public class BungeeMessenger implements PluginMessageListener {
         if (!enabled) {
             return;
         }
-
-        plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, BUNGEE_CORD);
-        plugin.getServer().getMessenger().unregisterIncomingPluginChannel(plugin, BUNGEE_CORD, this);
 
         // 注销自定义消息通道
         plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL_CONNECT_OTHER);
@@ -94,6 +87,7 @@ public class BungeeMessenger implements PluginMessageListener {
         if (player == null) return;
 
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
+        out.writeUTF("REQ");
         out.writeUTF(server);
         player.sendPluginMessage(plugin, CHANNEL_SERVER_INFO, out.toByteArray());
     }
@@ -122,30 +116,23 @@ public class BungeeMessenger implements PluginMessageListener {
     }
 
     /**
-     * 将玩家连接到指定服务器（使用原生 BungeeCord Connect）
-     */
-    public void connectPlayer(Player player, String server) {
-        if (!enabled) return;
-
-        ByteArrayDataOutput out = ByteStreams.newDataOutput();
-        out.writeUTF("Connect");
-        out.writeUTF(server);
-        player.sendPluginMessage(plugin, BUNGEE_CORD, out.toByteArray());
-    }
-
-    /**
-     * 将玩家连接到指定子服务器
+     * 将玩家连接到指定子服务器（通过自定义通道，兼容 BungeeCord 和 Velocity）
      */
     public void connectPlayerToServer(Player player, String server) {
-        if (!enabled) return;
+        if (!enabled) {
+            plugin.getLogger().warning("BungeeMessenger 已禁用，无法发送连接请求");
+            return;
+        }
 
+        plugin.getLogger().info("发送连接请求: 玩家=" + player.getName() + " 目标服务器=" + server);
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF(server);
-        player.sendPluginMessage(plugin, CHANNEL_CONNECT_OTHER, out.toByteArray());
+        player.sendPluginMessage(plugin, CHANNEL_CONNECT_REQUEST, out.toByteArray());
     }
 
     /**
-     * 通过自定义通道通知 BungeeCord 将指定玩家转移到目标服务器
+     * 通过自定义通道通知代理端将指定玩家转移到目标服务器
+     * 用于转移其他玩家（非当前玩家自己）
      *
      * @param targetPlayer 要转移的玩家名
      * @param targetServer 目标服务器名
@@ -183,7 +170,7 @@ public class BungeeMessenger implements PluginMessageListener {
      * 将玩家连接到主服务器
      */
     public void connectToMainServer(Player player) {
-        connectPlayer(player, mainServer);
+        connectPlayerToServer(player, mainServer);
     }
 
     public int getMainServerPlayerCount() {
@@ -272,6 +259,10 @@ public class BungeeMessenger implements PluginMessageListener {
 
         if (CHANNEL_SERVER_INFO.equals(channel)) {
             ByteArrayDataInput in = ByteStreams.newDataInput(message);
+            String type = in.readUTF();
+            if (!"RESP".equals(type)) {
+                return;
+            }
             String server = in.readUTF();
             int online = in.readInt();
             int maxPlayers = in.readInt();

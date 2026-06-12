@@ -1,4 +1,5 @@
 name: LoginSequence2Online
 version: '${project.version}'
 main: top.mcocet.loginsequence2online.LoginSequence2Online
-api-version: '1.14'
+api-version: '1.19'
+folia-supported: true

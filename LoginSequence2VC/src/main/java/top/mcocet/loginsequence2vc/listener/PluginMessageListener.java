@@ -7,6 +7,7 @@ import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.PluginMessageEvent;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
+import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 import org.slf4j.Logger;
 import top.mcocet.loginsequence2vc.LoginSequence2VC;
@@ -28,6 +29,9 @@ public class PluginMessageListener {
     @Subscribe
     public void onPluginMessage(PluginMessageEvent event) {
         String channel = event.getIdentifier().getId();
+        String sourceType = event.getSource().getClass().getSimpleName();
+        int dataLen = event.getData().length;
+        plugin.debug("收到消息通道: " + channel + " 来源类型: " + sourceType + " 数据长度: " + dataLen + " 字节");
 
         if (LoginSequence2VC.CHANNEL_CONNECT_OTHER.equals(channel)) {
             handleConnectOther(event);
@@ -40,11 +44,16 @@ public class PluginMessageListener {
         }
 
         if (LoginSequence2VC.CHANNEL_SERVER_INFO.equals(channel)) {
-            // 判断消息来源：来自子服务器的是响应，来自玩家的是请求
-            if (event.getSource() instanceof Player) {
-                handleServerInfoRequest(event);
-            } else if (event.getSource() instanceof RegisteredServer) {
+            // 按消息 type 字段判断请求/响应，不再依赖来源类型
+            String msgType = peekMessageType(event.getData());
+            if ("RESP".equals(msgType)) {
+                plugin.debug("ServerInfo: 识别为响应消息");
                 handleServerInfoResponse(event);
+            } else if ("REQ".equals(msgType)) {
+                plugin.debug("ServerInfo: 识别为请求消息");
+                handleServerInfoRequest(event);
+            } else {
+                plugin.debug("ServerInfo: 未知消息类型: " + msgType);
             }
             return;
         }
@@ -55,11 +64,6 @@ public class PluginMessageListener {
      * 格式: [targetPlayer] [targetServer]
      */
     private void handleConnectOther(PluginMessageEvent event) {
-        if (!(event.getSource() instanceof Player)) {
-            return;
-        }
-
-        Player sender = (Player) event.getSource();
         ByteArrayDataInput in = ByteStreams.newDataInput(event.getData());
         String targetPlayerName;
         String targetServerName;
@@ -86,12 +90,11 @@ public class PluginMessageListener {
         Player target = targetOpt.get();
         RegisteredServer targetSrv = serverOpt.get();
 
+        plugin.debug("ConnectOther: 将玩家 " + targetPlayerName + " 转移到 " + targetServerName);
         target.createConnectionRequest(targetSrv).connect().whenComplete((result, throwable) -> {
             if (throwable != null) {
                 logger.warn("ConnectOther: 将玩家 {} 转移到 {} 失败: {}",
                         targetPlayerName, targetServerName, throwable.getMessage());
-            } else {
-                logger.debug("ConnectOther: 已将玩家 {} 转移到 {}", targetPlayerName, targetServerName);
             }
         });
 
@@ -102,11 +105,13 @@ public class PluginMessageListener {
      * 处理玩家主动请求连接到自己当前所在服务器之外的其他子服务器
      */
     private void handleConnectRequest(PluginMessageEvent event) {
-        if (!(event.getSource() instanceof Player)) {
+        // 从来源关联的服务器上找一个玩家来执行连接请求
+        Player sender = findPlayerFromSource(event.getSource());
+        if (sender == null) {
+            logger.warn("ConnectRequest: 无法从来源找到玩家来执行连接");
             return;
         }
 
-        Player sender = (Player) event.getSource();
         ByteArrayDataInput in = ByteStreams.newDataInput(event.getData());
         String targetServerName;
         try {
@@ -122,12 +127,11 @@ public class PluginMessageListener {
             return;
         }
 
+        plugin.debug("ConnectRequest: 玩家 " + sender.getUsername() + " 请求连接到 " + targetServerName);
         sender.createConnectionRequest(serverOpt.get()).connect().whenComplete((result, throwable) -> {
             if (throwable != null) {
                 logger.warn("ConnectRequest: 将玩家 {} 转移到 {} 失败: {}",
                         sender.getUsername(), targetServerName, throwable.getMessage());
-            } else {
-                logger.debug("ConnectRequest: 已将玩家 {} 转移到 {}", sender.getUsername(), targetServerName);
             }
         });
 
@@ -135,51 +139,94 @@ public class PluginMessageListener {
     }
 
     /**
-     * 处理来自玩家的 ServerInfo 请求
-     * 请求格式: [serverName]
+     * 从消息来源中找到一个玩家
+     */
+    private Player findPlayerFromSource(Object source) {
+        if (source instanceof Player) {
+            return (Player) source;
+        } else if (source instanceof ServerConnection) {
+            for (Player p : ((ServerConnection) source).getServer().getPlayersConnected()) {
+                return p;
+            }
+        }
+        // 兜底：从所有在线玩家中找一个
+        for (Player p : server.getAllPlayers()) {
+            return p;
+        }
+        return null;
+    }
+
+    /**
+     * 处理 ServerInfo 请求
+     * 请求格式: [type="REQ"] [serverName]
      * 策略：将请求转发给目标子服务器，由子服务器插件返回真实信息。
      */
     private void handleServerInfoRequest(PluginMessageEvent event) {
-        Player sender = (Player) event.getSource();
         ByteArrayDataInput in = ByteStreams.newDataInput(event.getData());
+        String type;
         String serverName;
         try {
+            type = in.readUTF();
             serverName = in.readUTF();
         } catch (Exception e) {
             logger.warn("ServerInfo 请求格式错误: {}", e.getMessage());
             return;
         }
+        plugin.debug("ServerInfo: 收到请求查询服务器: " + serverName);
 
         Optional<RegisteredServer> targetOpt = server.getServer(serverName);
         if (targetOpt.isEmpty()) {
-            // 目标服务器不存在，直接返回离线状态
-            sendServerInfoResponse(sender, serverName, 0, 0, false);
+            plugin.debug("ServerInfo: 目标服务器 " + serverName + " 不存在，返回离线状态");
+            // 需要找到一个玩家来发送响应
+            findAnyPlayerToRespond(event.getSource(), serverName, 0, 0, false);
             event.setResult(PluginMessageEvent.ForwardResult.handled());
             return;
         }
 
         RegisteredServer targetServer = targetOpt.get();
 
-        // 如果请求者就在目标服务器上，不需要转发，让子服务器自己处理
-        if (sender.getCurrentServer().isPresent()
-                && sender.getCurrentServer().get().getServerInfo().getName().equals(serverName)) {
-            return;
-        }
-
-        // 转发 ServerInfo 请求到请求者当前所在子服务器，由该服务器上的 LS2Online 返回信息
-        if (sender.getCurrentServer().isEmpty()) {
-            return;
-        }
-
+        // 转发 ServerInfo 请求到目标子服务器，由该服务器上的 LS2Online 返回信息
+        // 注意：必须通过目标服务器上的玩家连接发送，Bukkit 端才能收到插件消息
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
+        out.writeUTF("REQ");
         out.writeUTF(serverName);
 
-        sender.getCurrentServer().get().sendPluginMessage(
-                com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier.from(LoginSequence2VC.CHANNEL_SERVER_INFO),
-                out.toByteArray()
-        );
+        plugin.debug("ServerInfo: 转发请求到子服务器，目标: " + serverName + " 目标服在线玩家数: " + targetServer.getPlayersConnected().size());
+        // 使用目标服务器上的任意玩家来转发请求
+        if (!targetServer.getPlayersConnected().isEmpty()) {
+            Player relayPlayer = targetServer.getPlayersConnected().iterator().next();
+            plugin.debug("ServerInfo: 使用转发玩家: " + relayPlayer.getUsername());
+            relayPlayer.getCurrentServer().ifPresent(conn -> {
+                    plugin.debug("ServerInfo: 通过连接 " + conn.getServerInfo().getName() + " 发送转发请求");
+                    conn.sendPluginMessage(
+                            com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier.from(LoginSequence2VC.CHANNEL_SERVER_INFO),
+                            out.toByteArray()
+                    );
+            });
+        } else {
+            // 目标服务器没有玩家，无法通过玩家连接转发请求
+            // 返回在线状态为 true，但人数为 0，让 Main 端自行判断
+            plugin.debug("ServerInfo: 目标服务器没有玩家，返回在线但人数为0");
+            findAnyPlayerToRespond(event.getSource(), serverName, 0, targetServer.getPlayersConnected().size(), true);
+        }
 
         event.setResult(PluginMessageEvent.ForwardResult.handled());
+    }
+
+    /**
+     * 向与消息来源关联的任意玩家发送响应
+     */
+    private void findAnyPlayerToRespond(Object source, String serverName, int online, int maxPlayers, boolean onlineStatus) {
+        if (source instanceof Player) {
+            sendServerInfoResponse((Player) source, serverName, online, maxPlayers, onlineStatus);
+        } else if (source instanceof ServerConnection) {
+            // 从来源服务器上找一个玩家来发送响应
+            ServerConnection conn = (ServerConnection) source;
+            for (Player p : conn.getServer().getPlayersConnected()) {
+                sendServerInfoResponse(p, serverName, online, maxPlayers, onlineStatus);
+                return;
+            }
+        }
     }
 
     /**
@@ -188,33 +235,50 @@ public class PluginMessageListener {
      * 策略：将响应转发给当前在该子服务器上的所有玩家。
      */
     private void handleServerInfoResponse(PluginMessageEvent event) {
-        RegisteredServer sourceServer = (RegisteredServer) event.getSource();
-        ByteArrayDataInput in = ByteStreams.newDataInput(event.getData());
+        ServerConnection sourceServer = (ServerConnection) event.getSource();
+        byte[] data = event.getData();
+        plugin.debug("ServerInfo: 收到来自子服务器 " + sourceServer.getServerInfo().getName() + " 的响应，数据长度=" + data.length + " 字节");
 
+        ByteArrayDataInput in = ByteStreams.newDataInput(data);
+
+        String type;
         String serverName;
         int online;
         int maxPlayers;
         boolean onlineStatus;
         try {
+            type = in.readUTF();
             serverName = in.readUTF();
+            plugin.debug("ServerInfo: 读取到 serverName=" + serverName);
             online = in.readInt();
+            plugin.debug("ServerInfo: 读取到 online=" + online);
             maxPlayers = in.readInt();
+            plugin.debug("ServerInfo: 读取到 maxPlayers=" + maxPlayers);
             onlineStatus = in.readBoolean();
+            plugin.debug("ServerInfo: 读取到 onlineStatus=" + onlineStatus);
         } catch (Exception e) {
-            logger.warn("ServerInfo 响应格式错误: {}", e.getMessage());
+            logger.warn("ServerInfo 响应格式错误: {} 数据长度={} 字节 来源服务器={}",
+                    e.getMessage(), data.length, sourceServer.getServerInfo().getName());
             return;
         }
 
-        // 将响应转发给该子服务器上的所有在线玩家
-        for (Player player : sourceServer.getPlayersConnected()) {
-            sendServerInfoResponse(player, serverName, online, maxPlayers, onlineStatus);
+        plugin.debug("ServerInfo: 响应 " + serverName + " 在线=" + online + " 最大=" + maxPlayers + " 状态=" + onlineStatus);
+        // 将响应转发给所有子服务器上的所有在线玩家，确保请求者能收到
+        int playerCount = 0;
+        for (RegisteredServer rs : server.getAllServers()) {
+            for (Player player : rs.getPlayersConnected()) {
+                sendServerInfoResponse(player, serverName, online, maxPlayers, onlineStatus);
+                playerCount++;
+            }
         }
+        plugin.debug("ServerInfo: 响应已转发给 " + playerCount + " 个玩家");
 
         event.setResult(PluginMessageEvent.ForwardResult.handled());
     }
 
     private void sendServerInfoResponse(Player sender, String serverName, int online, int maxPlayers, boolean onlineStatus) {
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
+        out.writeUTF("RESP");
         out.writeUTF(serverName);
         out.writeInt(online);
         out.writeInt(maxPlayers);
@@ -226,5 +290,17 @@ public class PluginMessageListener {
                         out.toByteArray()
                 )
         );
+    }
+
+    /**
+     * 预览消息的第一个 UTF 字段，用于判断消息类型
+     */
+    private String peekMessageType(byte[] data) {
+        try {
+            ByteArrayDataInput in = ByteStreams.newDataInput(data);
+            return in.readUTF();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

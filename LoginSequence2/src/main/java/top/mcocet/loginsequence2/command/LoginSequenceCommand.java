@@ -40,6 +40,8 @@ public class LoginSequenceCommand implements CommandExecutor, TabCompleter {
         switch (sub) {
             case "skip":
                 return handleSkip(sender, args);
+            case "debug":
+                return handleDebug(sender);
             case "list":
                 return handleList(sender);
             case "status":
@@ -154,6 +156,18 @@ public class LoginSequenceCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean handleDebug(CommandSender sender) {
+        if (!sender.hasPermission("loginsequence.admin.debug")) {
+            sender.sendMessage(languageManager.getMessage("no-permission"));
+            return true;
+        }
+
+        boolean newState = !plugin.isDebug();
+        plugin.setDebug(newState);
+        sender.sendMessage(ChatColor.GREEN + "[LoginSequence] 调试模式已" + (newState ? "开启" : "关闭"));
+        return true;
+    }
+
     private boolean handleInfo(CommandSender sender) {
         if (!sender.hasPermission("loginsequence.admin.info")) {
             sender.sendMessage(languageManager.getMessage("no-permission"));
@@ -187,6 +201,7 @@ public class LoginSequenceCommand implements CommandExecutor, TabCompleter {
     private void sendHelp(CommandSender sender) {
         sender.sendMessage(languageManager.getMessage("help-header"));
         sender.sendMessage(languageManager.getMessage("help-skip"));
+        sender.sendMessage(languageManager.getMessage("help-debug"));
         sender.sendMessage(languageManager.getMessage("help-list"));
         sender.sendMessage(languageManager.getMessage("help-status"));
         sender.sendMessage(languageManager.getMessage("help-refresh"));
@@ -199,7 +214,7 @@ public class LoginSequenceCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            List<String> subs = Arrays.asList("skip", "list", "status", "refresh", "reload", "info", "help");
+            List<String> subs = Arrays.asList("skip", "debug", "list", "status", "refresh", "reload", "info", "help");
             List<String> result = new ArrayList<>();
             for (String sub : subs) {
                 if (sub.startsWith(args[0].toLowerCase())) {

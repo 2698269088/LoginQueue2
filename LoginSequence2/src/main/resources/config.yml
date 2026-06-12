@@ -4,6 +4,9 @@ language: zh_CN
 # 是否启用 BungeeCord 通道扩展（需要配合 LoginSequence2BC 使用）
 enable-bungee-extension: true
 
+# 是否启用调试日志（输出详细的插件运行信息）
+debug: false
+
 # 登录队列配置
 queue:
   # 主服务器在 BungeeCord 中的名称

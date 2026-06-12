@@ -19,11 +19,13 @@ public final class LoginSequence extends JavaPlugin {
     private BungeeMessenger messenger;
     private PlayerJoinListener playerJoinListener;
     private LanguageManager languageManager;
+    private boolean debug;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
+        this.debug = getConfig().getBoolean("debug", false);
         this.languageManager = new LanguageManager(this);
 
         boolean enableBungeeExtension = getConfig().getBoolean("enable-bungee-extension", true);
@@ -142,5 +144,15 @@ public final class LoginSequence extends JavaPlugin {
 
     public LanguageManager getLanguageManager() {
         return languageManager;
+    }
+
+    public boolean isDebug() {
+        return debug;
+    }
+
+    public void setDebug(boolean debug) {
+        this.debug = debug;
+        getConfig().set("debug", debug);
+        saveConfig();
     }
 }
