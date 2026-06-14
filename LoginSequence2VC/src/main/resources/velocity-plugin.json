@@ -1,7 +1,7 @@
 {
   "id": "loginsequence2vc",
   "name": "LoginSequence2VC",
-  "version": "1.0.1",
+  "version": "${project.version}",
   "description": "LoginSequence2 的 Velocity 代理端配套插件",
   "authors": ["MCOCET"],
   "main": "top.mcocet.loginsequence2vc.LoginSequence2VC"

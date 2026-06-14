@@ -76,26 +76,55 @@ public class PlayerJoinListener implements Listener {
                     return;
                 }
 
-                // 先判断主服务器是否在线
-                if (!messenger.isMainServerOnline()) {
-                    player.sendMessage(languageManager.getMessage("main-offline"));
+                // 先判断主服务器是否在线（缓存中有数据时直接判断）
+                if (messenger.isMainServerOnline()) {
+                    // 已在队列中则不再重复添加
+                    if (isInQueue(uuid)) {
+                        return;
+                    }
+
+                    // 计算玩家优先级并入队
+                    int priority = calculatePriority(player);
+                    waitingQueue.offer(new QueueEntry(uuid, priority));
+
+                    // 通知玩家排队位置
+                    sendQueueStatus(player, uuid);
+
+                    // 尝试放行队列中的玩家
+                    processQueue();
                     return;
                 }
 
-                // 已在队列中则不再重复添加
-                if (isInQueue(uuid)) {
-                    return;
-                }
+                // 缓存中没有有效数据，进行实时检测（BC 优先模式下首次连接时缓存可能为空）
+                player.sendMessage(languageManager.getMessage("checking-main-server"));
+                messenger.checkMainServerOnlineAsync(3).whenComplete((online, throwable) -> {
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        if (throwable != null || !online) {
+                            player.sendMessage(languageManager.getMessage("main-offline"));
+                            return;
+                        }
 
-                // 计算玩家优先级并入队
-                int priority = calculatePriority(player);
-                waitingQueue.offer(new QueueEntry(uuid, priority));
+                        // 玩家已离线则忽略
+                        if (!player.isOnline()) {
+                            return;
+                        }
 
-                // 通知玩家排队位置
-                sendQueueStatus(player, uuid);
+                        // 已在队列中则不再重复添加
+                        if (isInQueue(uuid)) {
+                            return;
+                        }
 
-                // 尝试放行队列中的玩家
-                processQueue();
+                        // 计算玩家优先级并入队
+                        int priority = calculatePriority(player);
+                        waitingQueue.offer(new QueueEntry(uuid, priority));
+
+                        // 通知玩家排队位置
+                        sendQueueStatus(player, uuid);
+
+                        // 尝试放行队列中的玩家
+                        processQueue();
+                    });
+                });
             }
         }.runTaskLater(plugin, lockTime * 20L);
     }

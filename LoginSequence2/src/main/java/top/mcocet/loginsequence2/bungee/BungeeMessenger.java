@@ -3,6 +3,8 @@ package top.mcocet.loginsequence2.bungee;
 import com.google.common.io.ByteArrayDataInput;
 import com.google.common.io.ByteArrayDataOutput;
 import com.google.common.io.ByteStreams;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.messaging.PluginMessageListener;
@@ -10,6 +12,10 @@ import org.bukkit.scheduler.BukkitRunnable;
 import top.mcocet.loginsequence2.LoginSequence;
 import top.mcocet.loginsequence2.udp.UDPClient;
 
+import java.io.*;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Comparator;
@@ -25,6 +31,8 @@ public class BungeeMessenger implements PluginMessageListener {
     public static final String CHANNEL_CONNECT_REQUEST = "loginsequence:connectrequest";
     /** 自定义消息通道：用于获取指定服务器的状态信息 */
     public static final String CHANNEL_SERVER_INFO = "loginsequence:serverinfo";
+    /** BungeeCord 原生通道（Bukkit 内置，无需注册） */
+    public static final String CHANNEL_BUNGEE_CORD = "BungeeCord";
 
     private final LoginSequence plugin;
     private final String mainServer;
@@ -56,6 +64,10 @@ public class BungeeMessenger implements PluginMessageListener {
         this.udpEnabled = plugin.getConfig().getBoolean("udp-sync.enabled", false);
         this.udpPriority = plugin.getConfig().getString("udp-sync.priority", "BC_CHANNEL");
 
+        // 总是注册 BungeeCord 原生通道（关闭BC扩展时用于原生检测）
+        plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_BUNGEE_CORD);
+        plugin.getServer().getMessenger().registerIncomingPluginChannel(plugin, CHANNEL_BUNGEE_CORD, this);
+
         if (!enabled) {
             return;
         }
@@ -65,9 +77,6 @@ public class BungeeMessenger implements PluginMessageListener {
         plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_CONNECT_REQUEST);
         plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_SERVER_INFO);
         plugin.getServer().getMessenger().registerIncomingPluginChannel(plugin, CHANNEL_SERVER_INFO, this);
-
-        // 注册 BungeeCord 原生通道（用于 UDP 优先模式下直接转移玩家）
-        plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, "BungeeCord");
 
         // 初始化 UDP 客户端（支持多主服务器）
         if (udpEnabled) {
@@ -140,6 +149,10 @@ public class BungeeMessenger implements PluginMessageListener {
     }
 
     public void shutdown() {
+        // 注销 BungeeCord 原生通道（总是注销）
+        plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL_BUNGEE_CORD);
+        plugin.getServer().getMessenger().unregisterIncomingPluginChannel(plugin, CHANNEL_BUNGEE_CORD, this);
+
         if (!enabled) {
             return;
         }
@@ -168,6 +181,13 @@ public class BungeeMessenger implements PluginMessageListener {
         if (isDebug()) {
             plugin.getLogger().info("开始刷新服务器状态，UDP启用=" + udpEnabled + "，优先级=" + udpPriority);
         }
+
+        // 记录刷新前的时间戳，用于判断本次刷新是否收到新响应
+        Map<String, Long> beforeRefreshTimes = new java.util.HashMap<>();
+        for (String server : serverStatusCache.keySet()) {
+            beforeRefreshTimes.put(server, lastServerInfoTimeMap.getOrDefault(server, 0L));
+        }
+
         if (udpEnabled && "UDP".equalsIgnoreCase(udpPriority)) {
             // 优先使用 UDP
             boolean anySuccess = tryRefreshViaUDP();
@@ -195,6 +215,25 @@ public class BungeeMessenger implements PluginMessageListener {
                 tryRefreshViaUDP();
             }
         }
+
+        // 清理过期缓存：对于本次刷新没有收到新响应的服务器，标记为离线
+        long now = System.currentTimeMillis();
+        for (String server : new java.util.ArrayList<>(serverStatusCache.keySet())) {
+            Long lastTime = lastServerInfoTimeMap.get(server);
+            Long beforeTime = beforeRefreshTimes.get(server);
+            // 如果该服务器在刷新前有时间戳，且刷新后时间戳没有变化（没有收到新响应），且已超时
+            if (lastTime != null && beforeTime != null && lastTime.equals(beforeTime)
+                    && (now - lastTime) >= SERVER_INFO_TIMEOUT) {
+                ServerStatus oldStatus = serverStatusCache.get(server);
+                if (oldStatus != null && oldStatus.isOnline()) {
+                    if (isDebug()) {
+                        plugin.getLogger().info("服务器 " + server + " 的缓存已过期（" + ((now - lastTime) / 1000) + "秒未更新），标记为离线");
+                    }
+                    serverStatusCache.put(server, new ServerStatus(server, oldStatus.getOnlinePlayers(), oldStatus.getMaxPlayers(), false));
+                }
+            }
+        }
+
         if (isDebug()) {
             plugin.getLogger().info("刷新完成，当前缓存服务器数: " + serverStatusCache.size());
         }
@@ -234,7 +273,7 @@ public class BungeeMessenger implements PluginMessageListener {
     /**
      * 尝试通过 BungeeCord 通道获取所有已配置服务器的信息
      *
-     * @return 是否至少有一个成功（基于是否有缓存更新）
+     * @return 是否至少有一个服务器在刷新前已有缓存（用于判断是否可能获取到状态）
      */
     private boolean tryRefreshViaBC() {
         // 收集所有需要请求的服务器名称
@@ -247,29 +286,32 @@ public class BungeeMessenger implements PluginMessageListener {
             }
         }
 
-        boolean anySuccess = false;
-        for (String server : serversToRequest) {
-            long beforeTime = lastServerInfoTimeMap.getOrDefault(server, 0L);
-            requestServerInfo(server);
-            // 给一点时间等待响应（使用异步延迟避免阻塞主线程）
-            final String targetServer = server;
-            final long before = beforeTime;
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    if (lastServerInfoTimeMap.getOrDefault(targetServer, 0L) > before) {
-                        if (plugin.isDebug()) {
-                            plugin.getLogger().info("BungeeCord 通道获取 " + targetServer + " 成功");
-                        }
-                    }
-                }
-            }.runTaskLater(plugin, 10L);
-            // 简单判断：如果之前没有缓存，至少请求已发出
-            if (serverStatusCache.containsKey(server)) {
-                anySuccess = true;
+        Player player = getAnyOnlinePlayer();
+        if (player == null) {
+            return !serverStatusCache.isEmpty();
+        }
+
+        if (enabled) {
+            // 开启BC扩展时，使用自定义通道
+            for (String server : serversToRequest) {
+                requestServerInfo(server);
+            }
+        } else {
+            // 关闭BC扩展时，使用BungeeCord原生ServerIP + Minecraft Server List Ping
+            if (isDebug()) {
+                plugin.getLogger().info("关闭BC扩展模式，使用BungeeCord原生ServerIP检测服务器状态");
+            }
+            for (String server : serversToRequest) {
+                ByteArrayDataOutput out = ByteStreams.newDataOutput();
+                out.writeUTF("ServerIP");
+                out.writeUTF(server);
+                player.sendPluginMessage(plugin, CHANNEL_BUNGEE_CORD, out.toByteArray());
             }
         }
-        return anySuccess || !serverStatusCache.isEmpty();
+
+        // 判断依据：是否有在线玩家可以发送请求，且缓存中已有数据
+        // 注意：这不代表本次请求一定成功，只是表示通道可能可用
+        return !serverStatusCache.isEmpty();
     }
 
     /**
@@ -320,23 +362,25 @@ public class BungeeMessenger implements PluginMessageListener {
      * 默认模式下使用自定义通道（需要 BC 插件）
      */
     public void connectPlayerToServer(Player player, String server) {
-        if (!enabled) {
-            plugin.getLogger().warning("BungeeMessenger 已禁用，无法发送连接请求");
-            return;
-        }
-
         boolean udpPreferred = udpEnabled && "UDP".equalsIgnoreCase(udpPriority);
         if (udpPreferred) {
             plugin.getLogger().info("发送连接请求(BungeeCord原生): 玩家=" + player.getName() + " 目标服务器=" + server);
             ByteArrayDataOutput out = ByteStreams.newDataOutput();
             out.writeUTF("Connect");
             out.writeUTF(server);
-            player.sendPluginMessage(plugin, "BungeeCord", out.toByteArray());
-        } else {
+            player.sendPluginMessage(plugin, CHANNEL_BUNGEE_CORD, out.toByteArray());
+        } else if (enabled) {
             plugin.getLogger().info("发送连接请求(自定义通道): 玩家=" + player.getName() + " 目标服务器=" + server);
             ByteArrayDataOutput out = ByteStreams.newDataOutput();
             out.writeUTF(server);
             player.sendPluginMessage(plugin, CHANNEL_CONNECT_REQUEST, out.toByteArray());
+        } else {
+            // 关闭BC扩展时，使用BungeeCord原生Connect通道
+            plugin.getLogger().info("发送连接请求(BungeeCord原生): 玩家=" + player.getName() + " 目标服务器=" + server);
+            ByteArrayDataOutput out = ByteStreams.newDataOutput();
+            out.writeUTF("Connect");
+            out.writeUTF(server);
+            player.sendPluginMessage(plugin, CHANNEL_BUNGEE_CORD, out.toByteArray());
         }
     }
 
@@ -433,7 +477,13 @@ public class BungeeMessenger implements PluginMessageListener {
         boolean udpPreferred = udpEnabled && "UDP".equalsIgnoreCase(udpPriority);
         if (!udpPreferred) {
             ServerStatus status = getMainServerStatus();
-            return status != null ? status.getMaxPlayers() : plugin.getConfig().getInt("queue.max-online", 10);
+            int maxPlayers = status != null ? status.getMaxPlayers() : 0;
+            // 当目标服务器没有玩家时，BC/VC 代理端会返回 maxPlayers=0
+            // 此时应使用本地配置作为备用值，避免队列逻辑认为没有可用槽位
+            if (maxPlayers <= 0) {
+                maxPlayers = plugin.getConfig().getInt("queue.max-online", 10);
+            }
+            return maxPlayers;
         }
 
         // UDP 优先模式下，返回所有在线 UDP 服务器的总容量
@@ -536,11 +586,6 @@ public class BungeeMessenger implements PluginMessageListener {
     public CompletableFuture<Boolean> checkMainServerOnlineAsync(int timeoutSeconds) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
 
-        if (!enabled) {
-            future.complete(false);
-            return future;
-        }
-
         Player player = getAnyOnlinePlayer();
         if (player == null) {
             future.complete(false);
@@ -555,8 +600,18 @@ public class BungeeMessenger implements PluginMessageListener {
             for (UDPClient client : udpClients) {
                 client.requestServerInfoAsync();
             }
-        } else {
+        } else if (enabled) {
+            // 开启BC扩展时，使用自定义通道
             requestMainServerInfo();
+        } else {
+            // 关闭BC扩展时，使用BungeeCord原生ServerIP获取IP和端口，然后Minecraft Server List Ping
+            if (isDebug()) {
+                plugin.getLogger().info("关闭BC扩展模式，使用BungeeCord原生ServerIP + Minecraft Server List Ping检测主服务器");
+            }
+            ByteArrayDataOutput out = ByteStreams.newDataOutput();
+            out.writeUTF("ServerIP");
+            out.writeUTF(mainServer);
+            player.sendPluginMessage(plugin, CHANNEL_BUNGEE_CORD, out.toByteArray());
         }
 
         new BukkitRunnable() {
@@ -584,7 +639,15 @@ public class BungeeMessenger implements PluginMessageListener {
                         cancel();
                         return;
                     }
+                } else if (enabled) {
+                    // 开启BC扩展模式
+                    if (lastServerInfoTimeMap.getOrDefault(mainServer, 0L) >= requestTime) {
+                        future.complete(isMainServerOnline());
+                        cancel();
+                        return;
+                    }
                 } else {
+                    // 关闭BC扩展模式：检查ServerIP响应是否已处理（通过Minecraft Server List Ping更新缓存）
                     if (lastServerInfoTimeMap.getOrDefault(mainServer, 0L) >= requestTime) {
                         future.complete(isMainServerOnline());
                         cancel();
@@ -631,6 +694,45 @@ public class BungeeMessenger implements PluginMessageListener {
 
     @Override
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
+        if (CHANNEL_BUNGEE_CORD.equals(channel)) {
+            // 处理 BungeeCord 原生通道响应
+            ByteArrayDataInput in = ByteStreams.newDataInput(message);
+            String subchannel;
+            try {
+                subchannel = in.readUTF();
+            } catch (Exception e) {
+                return;
+            }
+
+            if ("ServerIP".equals(subchannel)) {
+                String server;
+                String ip;
+                int port;
+                try {
+                    server = in.readUTF();
+                    ip = in.readUTF();
+                    port = in.readUnsignedShort();
+                } catch (Exception e) {
+                    return;
+                }
+                if (isDebug()) {
+                    plugin.getLogger().info("ServerIP: 收到 " + server + " 的地址: " + ip + ":" + port);
+                }
+                // 异步执行 Minecraft Server List Ping
+                final String targetServer = server;
+                final String targetIp = ip;
+                final int targetPort = port;
+                new Thread(() -> {
+                    ServerStatus status = pingMinecraftServer(targetServer, targetIp, targetPort);
+                    serverStatusCache.put(targetServer, status);
+                    if (status.isOnline()) {
+                        lastServerInfoTimeMap.put(targetServer, System.currentTimeMillis());
+                    }
+                }).start();
+            }
+            return;
+        }
+
         if (!enabled) {
             return;
         }
@@ -638,6 +740,29 @@ public class BungeeMessenger implements PluginMessageListener {
         if (CHANNEL_SERVER_INFO.equals(channel)) {
             ByteArrayDataInput in = ByteStreams.newDataInput(message);
             String type = in.readUTF();
+
+            if ("REQ".equals(type)) {
+                // 收到其他服务器（通过BC代理转发）发来的状态查询请求
+                // 返回当前服务器的在线状态
+                String server;
+                try {
+                    server = in.readUTF();
+                } catch (Exception e) {
+                    return;
+                }
+                ByteArrayDataOutput out = ByteStreams.newDataOutput();
+                out.writeUTF("RESP");
+                out.writeUTF(server);
+                out.writeInt(plugin.getServer().getOnlinePlayers().size());
+                out.writeInt(plugin.getServer().getMaxPlayers());
+                out.writeBoolean(true);
+                player.sendPluginMessage(plugin, CHANNEL_SERVER_INFO, out.toByteArray());
+                if (isDebug()) {
+                    plugin.getLogger().info("ServerInfo: 响应状态查询请求，服务器=" + server + " 在线=" + plugin.getServer().getOnlinePlayers().size() + " 最大=" + plugin.getServer().getMaxPlayers());
+                }
+                return;
+            }
+
             if (!"RESP".equals(type)) {
                 return;
             }
@@ -645,9 +770,115 @@ public class BungeeMessenger implements PluginMessageListener {
             int online = in.readInt();
             int maxPlayers = in.readInt();
             boolean onlineStatus = in.readBoolean();
+
+            // 更新缓存中的状态
             serverStatusCache.put(server, new ServerStatus(server, online, maxPlayers, onlineStatus));
+
+            // 更新最后收到响应的时间戳
+            // 注意：即使 maxPlayers = 0，只要 onlineStatus = true，也说明服务器进程存在并可通信
+            // 根据在线状态判断标准，这种情况应视为在线（BC/VC 代理端在无玩家时返回 maxPlayers=0 是正常行为）
             lastServerInfoTimeMap.put(server, System.currentTimeMillis());
         }
+    }
+
+    /**
+     * 使用 Minecraft Server List Ping 协议检测服务器状态
+     * 与原版客户端查询服务器列表的行为一致
+     *
+     * @param serverName 服务器名称
+     * @param ip 服务器IP
+     * @param port 服务器端口
+     * @return 服务器状态
+     */
+    private ServerStatus pingMinecraftServer(String serverName, String ip, int port) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(ip, port), 5000);
+
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+            DataInputStream in = new DataInputStream(socket.getInputStream());
+
+            // 发送握手包
+            // Packet ID (VarInt): 0x00
+            // Protocol Version (VarInt): -1 (ping)
+            // Server Address (String): ip
+            // Server Port (Unsigned Short): port
+            // Next State (VarInt): 1 (status)
+            ByteArrayOutputStream handshake = new ByteArrayOutputStream();
+            DataOutputStream handshakeData = new DataOutputStream(handshake);
+            writeVarInt(handshakeData, 0x00); // Packet ID
+            writeVarInt(handshakeData, -1); // Protocol version (ping)
+            writeString(handshakeData, ip);
+            handshakeData.writeShort(port);
+            writeVarInt(handshakeData, 1); // Next state: status
+
+            byte[] handshakeBytes = handshake.toByteArray();
+            writeVarInt(out, handshakeBytes.length);
+            out.write(handshakeBytes);
+
+            // 发送状态请求包
+            // Packet ID (VarInt): 0x00
+            // Empty payload
+            out.writeByte(0x01); // Length: 1
+            out.writeByte(0x00); // Packet ID: 0x00
+
+            // 读取响应长度
+            int length = readVarInt(in);
+            // 读取包ID
+            int packetId = readVarInt(in);
+            if (packetId != 0x00) {
+                return new ServerStatus(serverName, 0, 0, false);
+            }
+            // 读取JSON字符串长度
+            int jsonLength = readVarInt(in);
+            byte[] jsonBytes = new byte[jsonLength];
+            in.readFully(jsonBytes);
+            String json = new String(jsonBytes, StandardCharsets.UTF_8);
+
+            if (isDebug()) {
+                plugin.getLogger().info("ServerListPing: " + serverName + " 响应: " + json.substring(0, Math.min(json.length(), 200)));
+            }
+
+            // 解析JSON
+            JsonObject root = new JsonParser().parse(json).getAsJsonObject();
+            JsonObject players = root.getAsJsonObject("players");
+            int online = players != null && players.has("online") ? players.get("online").getAsInt() : 0;
+            int maxPlayers = players != null && players.has("max") ? players.get("max").getAsInt() : 0;
+
+            return new ServerStatus(serverName, online, maxPlayers, true);
+        } catch (Exception e) {
+            if (isDebug()) {
+                plugin.getLogger().info("ServerListPing: " + serverName + " 检测失败: " + e.getMessage());
+            }
+            return new ServerStatus(serverName, 0, 0, false);
+        }
+    }
+
+    private void writeVarInt(DataOutputStream out, int value) throws IOException {
+        while ((value & 0xFFFFFF80) != 0L) {
+            out.writeByte((value & 0x7F) | 0x80);
+            value >>>= 7;
+        }
+        out.writeByte(value & 0x7F);
+    }
+
+    private void writeString(DataOutputStream out, String value) throws IOException {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        writeVarInt(out, bytes.length);
+        out.write(bytes);
+    }
+
+    private int readVarInt(DataInputStream in) throws IOException {
+        int value = 0;
+        int position = 0;
+        byte currentByte;
+        while (true) {
+            currentByte = in.readByte();
+            value |= (currentByte & 0x7F) << position;
+            if ((currentByte & 0x80) == 0) break;
+            position += 7;
+            if (position >= 32) throw new IOException("VarInt too big");
+        }
+        return value;
     }
 
     /**

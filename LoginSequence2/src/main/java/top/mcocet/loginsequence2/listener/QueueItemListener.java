@@ -198,13 +198,15 @@ public class QueueItemListener implements Listener {
             return;
         }
 
-        // 默认/BC 优先模式：先使用缓存状态快速拒绝
-        if (!plugin.getMessenger().isMainServerOnline()) {
-            player.sendMessage(languageManager.getMessage("main-offline"));
+        // 默认/BC 优先模式：先检查缓存状态
+        if (plugin.getMessenger().isMainServerOnline()) {
+            // 缓存显示在线，直接入队
+            listener.addPlayerToQueue(player);
+            player.sendMessage(languageManager.getMessage("joined-queue"));
             return;
         }
 
-        // 实时检测主服务器状态，避免依赖缓存导致BC报错
+        // 缓存中没有有效数据或显示离线，进行实时检测（BC 优先模式下首次连接时缓存可能为空）
         player.sendMessage(languageManager.getMessage("checking-main-server"));
         plugin.getMessenger().checkMainServerOnlineAsync(3).whenComplete((online, throwable) -> {
             plugin.getServer().getScheduler().runTask(plugin, () -> {

@@ -6,7 +6,7 @@ authors: [MCOCET]
 description: 登录队列
 website: https://home.mcocet.top
 
-# 自定义消息通道
+# 自定义消息通道（Paper 1.21+ 必须全小写，BungeeCord 为内置通道无需声明）
 channels:
   - loginsequence:connectother
   - loginsequence:connectrequest

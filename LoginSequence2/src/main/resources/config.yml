@@ -2,7 +2,7 @@
 language: zh_CN
 
 # 是否启用 BungeeCord 通道扩展（需要配合 LoginSequence2BC 使用）
-enable-bungee-extension: true
+enable-bungee-extension: false
 
 # 是否启用调试日志（输出详细的插件运行信息）
 debug: false
@@ -20,7 +20,7 @@ udp-sync:
   # 建议修改为非预设密钥
   planned-key: "loginsequence"
   # 主服务器列表（支持多主服务器负载均衡）
-  # 老吕到使用多大厅的用户基本都是大型服务器
+  # 考虑到使用多大厅的用户基本都是大型服务器
   # 大概率也就有多个BC/VC端
   # 所以这里仅通知BC/VC跳转到main-server配置的主服转移玩家
   servers:
@@ -111,7 +111,7 @@ queue:
     # 出生点朝向（偏航角）
     yaw: 0.0
     # 随机出生半径（在中心点周围此半径内随机生成位置，0 表示固定位置）
-    radius: 8..5
+    radius: 8.5
   # 手动排队时发放的物品配置
   queue-item:
     # 物品所在槽位（0-8 为主手栏）
