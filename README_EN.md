@@ -1,7 +1,9 @@
 # LoginSequence2
 
-LoginSequence2 is a Minecraft server login queue system supporting Spigot/Paper subservers, BungeeCord, and Velocity proxies. Built with Maven multi-module aggregation, it manages four companion plugins in a unified project.
+LoginSequence2 is a Minecraft server login queue system supporting Spigot/Paper subservers, BungeeCord, Velocity proxies, and Limbo lightweight login servers. Built with Maven multi-module aggregation, it manages five companion plugins in a unified project.
 This plugin suite replaces the legacy LoginSequence plugin, having been completely refactored with significantly improved code quality and efficiency.
+
+> **LoginSequence2** is a next-generation Minecraft login queue solution, providing high-performance player queuing, load balancing, and cross-server transfer capabilities for network servers. Supports multiple platform combinations including Spigot/Paper, BungeeCord, Velocity, and Limbo to meet the deployment needs of various server scales.
 
 ## Project Structure
 
@@ -14,8 +16,10 @@ LoginSequence/
 │   └── src/main/java/top/mcocet/loginsequence2bc/
 ├── LoginSequence2Online/            # Subserver status reporting plugin
 │   └── src/main/java/top/mcocet/loginsequence2online/
-└── LoginSequence2VC/                # Velocity proxy companion plugin
-    └── src/main/java/top/mcocet/loginsequence2vc/
+├── LoginSequence2VC/                # Velocity proxy companion plugin
+│   └── src/main/java/top/mcocet/loginsequence2vc/
+└── LoginSequence2Limbo/             # Limbo login server companion plugin
+    └── src/main/java/top/mcocet/loginsequence2limbo/
 ```
 
 ## Module Overview
@@ -26,6 +30,7 @@ LoginSequence/
 | LoginSequence2BC | BungeeCord | Proxy plugin handling cross-server transfers and server info queries |
 | LoginSequence2Online | Spigot/Paper 1.14+ | Subserver plugin reporting online status to the main server |
 | LoginSequence2VC | Velocity 3.x | Velocity proxy plugin with same functionality as LS2BC |
+| LoginSequence2Limbo | Limbo | Lightweight login server plugin providing queue and status sync |
 
 ## Build
 
@@ -40,7 +45,8 @@ dist/
 ├── LoginSequence2-1.0.1.jar
 ├── LoginSequence2BC-1.0.1.jar
 ├── LoginSequence2Online-1.0.1.jar
-└── LoginSequence2VC-1.0.1.jar
+├── LoginSequence2VC-1.0.1.jar
+└── LoginSequence2Limbo-1.0.1.jar
 ```
 
 ## Installation
@@ -49,11 +55,20 @@ dist/
 
 Place `LoginSequence2-1.0.1.jar` into the `plugins/` folder of your login server (Lobby).
 
+### Basic Installation (Limbo Login Server)
+
+Place `LoginSequence2Limbo-1.0.1.jar` into the `plugins/` folder of your Limbo server.
+
+**Limbo Mode Features**:
+- Uses Limbo as a lightweight login server with minimal resource usage
+- Supports UDP status sync and BungeeCord/Velocity native channels
+- Unified beacon click and `/join` command logic
+
 ### Network Installation (BungeeCord + UDP Priority Mode - Recommended)
 
 **No BC plugin required** — uses UDP for direct status sync and BungeeCord native channels for player transfers.
 
-1. **Login Server (Lobby)**: Place `LoginSequence2-1.0.1.jar`
+1. **Login Server (Lobby)**: Place `LoginSequence2-1.0.1.jar` (Spigot/Paper) or `LoginSequence2Limbo-1.0.1.jar` (Limbo)
 2. **Main Servers (Main1, Main2...)**: Place `LoginSequence2Online-1.0.1.jar`
 
 Configure `config.yml`:
@@ -77,7 +92,7 @@ udp-sync:
 
 **BC plugin required** — uses BungeeCord custom plugin messaging channels.
 
-1. **Login Server (Lobby)**: Place `LoginSequence2-1.0.1.jar`
+1. **Login Server (Lobby)**: Place `LoginSequence2-1.0.1.jar` (Spigot/Paper) or `LoginSequence2Limbo-1.0.1.jar` (Limbo)
 2. **BungeeCord Proxy**: Place `LoginSequence2BC-1.0.1.jar`
 3. **Main Servers (Main)**: Place `LoginSequence2Online-1.0.1.jar`
 
@@ -91,7 +106,7 @@ udp-sync:
 
 ### Network Installation (Velocity + BC Priority Mode)
 
-1. **Login Server (Lobby)**: Place `LoginSequence2-1.0.1.jar`
+1. **Login Server (Lobby)**: Place `LoginSequence2-1.0.1.jar` (Spigot/Paper) or `LoginSequence2Limbo-1.0.1.jar` (Limbo)
 2. **Velocity Proxy**: Place `LoginSequence2VC-1.0.1.jar`
 3. **Main Servers (Main)**: Place `LoginSequence2Online-1.0.1.jar`
 

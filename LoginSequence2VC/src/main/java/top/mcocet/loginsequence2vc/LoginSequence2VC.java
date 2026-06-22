@@ -15,6 +15,7 @@ import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 import org.slf4j.Logger;
 import top.mcocet.loginsequence2vc.command.LoginSequenceVCCommand;
 import top.mcocet.loginsequence2vc.listener.PluginMessageListener;
+import top.mcocet.loginsequence2vc.listener.ServerCommandListener;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -34,6 +35,7 @@ public class LoginSequence2VC {
     public static final String CHANNEL_CONNECT_OTHER = "loginsequence:connectother";
     public static final String CHANNEL_CONNECT_REQUEST = "loginsequence:connectrequest";
     public static final String CHANNEL_SERVER_INFO = "loginsequence:serverinfo";
+    public static final String CHANNEL_LOGIN_SUCCESS = "loginsequence:loginsuccess";
 
     private final ProxyServer server;
     private final Logger logger;
@@ -56,13 +58,16 @@ public class LoginSequence2VC {
         ChannelIdentifier connectOther = MinecraftChannelIdentifier.from(CHANNEL_CONNECT_OTHER);
         ChannelIdentifier connectRequest = MinecraftChannelIdentifier.from(CHANNEL_CONNECT_REQUEST);
         ChannelIdentifier serverInfo = MinecraftChannelIdentifier.from(CHANNEL_SERVER_INFO);
+        ChannelIdentifier loginSuccess = MinecraftChannelIdentifier.from(CHANNEL_LOGIN_SUCCESS);
 
         server.getChannelRegistrar().register(connectOther);
         server.getChannelRegistrar().register(connectRequest);
         server.getChannelRegistrar().register(serverInfo);
+        server.getChannelRegistrar().register(loginSuccess);
 
         this.messageListener = new PluginMessageListener(this, server, logger);
         server.getEventManager().register(this, messageListener);
+        server.getEventManager().register(this, new ServerCommandListener(this, messageListener));
 
         CommandManager commandManager = server.getCommandManager();
         CommandMeta meta = commandManager.metaBuilder("lsvc")
@@ -141,5 +146,27 @@ public class LoginSequence2VC {
 
     public Path getDataDirectory() {
         return dataDirectory;
+    }
+
+    /**
+     * 读取配置项（布尔值）
+     */
+    public boolean getConfigBoolean(String key, boolean defaultValue) {
+        Path configFile = dataDirectory.resolve("config.properties");
+        if (!Files.exists(configFile)) {
+            return defaultValue;
+        }
+        Properties props = new Properties();
+        try (InputStream in = Files.newInputStream(configFile)) {
+            props.load(in);
+        } catch (IOException e) {
+            logger.warn("无法加载配置文件: {}", e.getMessage());
+            return defaultValue;
+        }
+        String value = props.getProperty(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        return Boolean.parseBoolean(value);
     }
 }

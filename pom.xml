@@ -6,7 +6,7 @@
 
     <groupId>top.mcocet</groupId>
     <artifactId>LoginSequence-parent</artifactId>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
     <packaging>pom</packaging>
 
     <name>LoginSequence Parent</name>
@@ -15,8 +15,9 @@
 
     <modules>
         <module>LoginSequence2</module>
-        <module>LoginSequence2BC</module>
+        <module>LoginSequence2Limbo</module>
         <module>LoginSequence2Online</module>
+        <module>LoginSequence2BC</module>
         <module>LoginSequence2VC</module>
     </modules>
 

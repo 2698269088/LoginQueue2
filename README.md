@@ -1,7 +1,9 @@
 # LoginSequence2
 
-LoginSequence2 是一个 Minecraft 服务器登录队列系统，支持 Spigot/Paper 子服务器、BungeeCord 和 Velocity 代理端。通过 Maven 多模块聚合构建，统一管理四个配套插件。
+LoginSequence2 是一个 Minecraft 服务器登录队列系统，支持 Spigot/Paper 子服务器、BungeeCord、Velocity 代理端和 Limbo 轻量级登录服。通过 Maven 多模块聚合构建，统一管理五个配套插件。
 本插件组是为了替代旧版的LoginSequence插件，经过彻底重构，代码质量和效率明显好过旧版。
+
+> **LoginSequence2** 是新一代 Minecraft 登录队列解决方案，为群组服提供高性能的玩家排队、负载均衡和跨服转移功能。支持 Spigot/Paper、BungeeCord、Velocity 和 Limbo 多种平台组合，满足不同规模服务器的部署需求。
 
 ## 项目结构
 
@@ -14,8 +16,10 @@ LoginSequence/
 │   └── src/main/java/top/mcocet/loginsequence2bc/
 ├── LoginSequence2Online/            # 子服务器在线状态上报插件
 │   └── src/main/java/top/mcocet/loginsequence2online/
-└── LoginSequence2VC/                # Velocity 代理端配套插件
-    └── src/main/java/top/mcocet/loginsequence2vc/
+├── LoginSequence2VC/                # Velocity 代理端配套插件
+│   └── src/main/java/top/mcocet/loginsequence2vc/
+└── LoginSequence2Limbo/             # Limbo 登录服配套插件
+    └── src/main/java/top/mcocet/loginsequence2limbo/
 ```
 
 ## 模块说明
@@ -26,6 +30,7 @@ LoginSequence/
 | LoginSequence2BC | BungeeCord | 代理端插件，处理跨服转移和服务器信息查询 |
 | LoginSequence2Online | Spigot/Paper 1.14+ | 子服务器插件，上报本服务器在线状态 |
 | LoginSequence2VC | Velocity 3.x | Velocity 代理端插件，功能同 LS2BC |
+| LoginSequence2Limbo | Limbo | 轻量级登录服插件，提供排队功能和状态同步 |
 
 ## 构建
 
@@ -40,7 +45,8 @@ dist/
 ├── LoginSequence2-1.0.1.jar
 ├── LoginSequence2BC-1.0.1.jar
 ├── LoginSequence2Online-1.0.1.jar
-└── LoginSequence2VC-1.0.1.jar
+├── LoginSequence2VC-1.0.1.jar
+└── LoginSequence2Limbo-1.0.1.jar
 ```
 
 ## 安装
@@ -49,11 +55,20 @@ dist/
 
 将 `LoginSequence2-1.0.1.jar` 放入登录服（Lobby）的 `plugins/` 文件夹。
 
+### 基础安装（Limbo 登录服）
+
+将 `LoginSequence2Limbo-1.0.1.jar` 放入 Limbo 服务器的 `plugins/` 文件夹。
+
+**Limbo 模式特点**：
+- 使用 Limbo 作为轻量级登录服，占用资源极低
+- 支持 UDP 状态同步和 BungeeCord/Velocity 原生通道
+- 信标点击和 `/join` 命令统一逻辑
+
 ### 群组服安装（BungeeCord + UDP 优先模式 - 推荐）
 
 **无需安装 BC 插件**，使用 UDP 直接同步状态 + BungeeCord 原生通道转移玩家。
 
-1. **登录服（Lobby）**：放入 `LoginSequence2-1.0.1.jar`
+1. **登录服（Lobby）**：放入 `LoginSequence2-1.0.1.jar`（Spigot/Paper）或 `LoginSequence2Limbo-1.0.1.jar`（Limbo）
 2. **主服务器（Main1, Main2...）**：放入 `LoginSequence2Online-1.0.1.jar`
 
 配置 `config.yml`:
@@ -77,7 +92,7 @@ udp-sync:
 
 **需要安装 BC 插件**，使用 BungeeCord 自定义通道通信。
 
-1. **登录服（Lobby）**：放入 `LoginSequence2-1.0.1.jar`
+1. **登录服（Lobby）**：放入 `LoginSequence2-1.0.1.jar`（Spigot/Paper）或 `LoginSequence2Limbo-1.0.1.jar`（Limbo）
 2. **BungeeCord 代理**：放入 `LoginSequence2BC-1.0.1.jar`
 3. **主服务器（Main）**：放入 `LoginSequence2Online-1.0.1.jar`
 
@@ -91,7 +106,7 @@ udp-sync:
 
 ### 群组服安装（Velocity + BC 优先模式）
 
-1. **登录服（Lobby）**：放入 `LoginSequence2-1.0.1.jar`
+1. **登录服（Lobby）**：放入 `LoginSequence2-1.0.1.jar`（Spigot/Paper）或 `LoginSequence2Limbo-1.0.1.jar`（Limbo）
 2. **Velocity 代理**：放入 `LoginSequence2VC-1.0.1.jar`
 3. **主服务器（Main）**：放入 `LoginSequence2Online-1.0.1.jar`
 
@@ -262,6 +277,22 @@ refresh-interval: 5
 
 **指令别名**: `/loginsequencevc`
 
+### LoginSequence2Limbo（Limbo 登录服）
+
+| 指令 | 权限 | 说明 |
+|------|------|------|
+| `/logseq skip [玩家名]` | `loginsequence.admin.skip` | 跳过排队，直接将玩家送入主服务器 |
+| `/logseq list` | `loginsequence.admin.list` | 显示当前排队玩家列表 |
+| `/logseq status` | `loginsequence.admin.status` | 显示主服务器状态 |
+| `/logseq refresh` | `loginsequence.admin.refresh` | 手动刷新主服务器状态缓存 |
+| `/logseq reload` | `loginsequence.admin.reload` | 重载配置文件和语言文件 |
+| `/logseq debug` | `loginsequence.admin.debug` | 切换调试模式 |
+| `/logseq info` | `loginsequence.admin.info` | 查看所有主服务器详细信息 |
+| `/logseq help` | - | 显示帮助信息 |
+| `/join` | - | 手动加入排队队列 |
+
+**指令别名**: `/ls` 是 `/logseq` 的别名
+
 ### LoginSequence2Online（子服务器）
 
 该插件无指令，启动后自动运行，通过 UDP 向登录服上报服务器状态信息。
@@ -327,6 +358,22 @@ refresh-interval: 5
 **核心功能**: 功能同 LS2BC，适配 Velocity 平台
 
 **适用场景**: 使用 Velocity 代理且 BC 通道优先模式时需要安装
+
+### LoginSequence2Limbo（Limbo 登录服插件）
+
+**运行平台**: Limbo
+**安装位置**: Limbo 服务器
+
+**核心功能**:
+- **登录队列管理**: 控制玩家进入主服务器的顺序，支持优先级排序
+- **负载均衡**: 多主服务器环境下自动选择负载最低的服务器
+- **玩家限制**: 限制排队中的玩家移动、交互
+- **出生点保护**: 禁止爆炸、取消伤害
+- **UDP 状态同步**: 通过 UDP 直接获取子服务器状态
+- **BungeeCord/Velocity 兼容**: 支持两种代理的原生通道转移玩家
+- **信标排队**: 玩家点击信标物品即可加入排队队列
+
+**适用场景**: 使用 Limbo 作为轻量级登录服时需要安装
 
 ### LoginSequence2Online（子服务器状态上报插件）
 

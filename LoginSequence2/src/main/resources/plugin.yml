@@ -11,6 +11,7 @@ channels:
   - loginsequence:connectother
   - loginsequence:connectrequest
   - loginsequence:serverinfo
+  - loginsequence:loginsuccess
 commands:
   logseq:
     description: LoginSequence 主命令
@@ -22,6 +23,16 @@ commands:
   join:
     description: 加入登录排队队列
     usage: /join
+  register:
+    description: 注册账号
+    usage: /register <密码> <确认密码>
+  login:
+    description: 登录账号
+    usage: /login <密码>
+  changepassword:
+    description: 修改密码
+    usage: /changepassword <旧密码> <新密码>
+    aliases: [changepw]
 permissions:
   loginsequence.admin.skip:
     description: 允许跳过排队

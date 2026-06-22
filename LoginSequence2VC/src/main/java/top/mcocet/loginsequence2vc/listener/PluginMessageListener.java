@@ -12,13 +12,19 @@ import com.velocitypowered.api.proxy.server.RegisteredServer;
 import org.slf4j.Logger;
 import top.mcocet.loginsequence2vc.LoginSequence2VC;
 
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 public class PluginMessageListener {
 
     private final LoginSequence2VC plugin;
     private final ProxyServer server;
     private final Logger logger;
+
+    // 记录已登录成功的玩家（用于限制 /server 命令）
+    private final Set<UUID> loggedInPlayers = new HashSet<>();
 
     public PluginMessageListener(LoginSequence2VC plugin, ProxyServer server, Logger logger) {
         this.plugin = plugin;
@@ -55,6 +61,11 @@ public class PluginMessageListener {
             } else {
                 plugin.debug("ServerInfo: 未知消息类型: " + msgType);
             }
+            return;
+        }
+
+        if (LoginSequence2VC.CHANNEL_LOGIN_SUCCESS.equals(channel)) {
+            handleLoginSuccess(event);
             return;
         }
     }
@@ -290,6 +301,46 @@ public class PluginMessageListener {
                         out.toByteArray()
                 )
         );
+    }
+
+    /**
+     * 处理玩家登录成功消息
+     */
+    private void handleLoginSuccess(PluginMessageEvent event) {
+        ByteArrayDataInput in = ByteStreams.newDataInput(event.getData());
+        String playerName;
+        String uuidStr;
+        try {
+            playerName = in.readUTF();
+            uuidStr = in.readUTF();
+        } catch (Exception e) {
+            logger.warn("LoginSuccess 消息格式错误: {}", e.getMessage());
+            return;
+        }
+
+        try {
+            UUID uuid = UUID.fromString(uuidStr);
+            loggedInPlayers.add(uuid);
+            plugin.debug("LoginSuccess: 玩家 " + playerName + " (" + uuid + ") 已登录，允许使用 /server 命令");
+        } catch (IllegalArgumentException e) {
+            logger.warn("LoginSuccess: 无效的 UUID: {}", uuidStr);
+        }
+        event.setResult(PluginMessageEvent.ForwardResult.handled());
+    }
+
+    /**
+     * 检查玩家是否已登录成功
+     */
+    public boolean isPlayerLoggedIn(UUID uuid) {
+        return loggedInPlayers.contains(uuid);
+    }
+
+    /**
+     * 玩家断开连接时移除登录状态
+     */
+    public void removePlayer(UUID uuid) {
+        loggedInPlayers.remove(uuid);
+        plugin.debug("LoginSuccess: 玩家 " + uuid + " 已断开，移除登录状态");
     }
 
     /**

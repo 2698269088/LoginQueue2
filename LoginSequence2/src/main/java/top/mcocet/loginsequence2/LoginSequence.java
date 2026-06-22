@@ -3,6 +3,9 @@ package top.mcocet.loginsequence2;
 import org.bukkit.ChatColor;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+import top.mcocet.loginsequence2.auth.AuthCommand;
+import top.mcocet.loginsequence2.auth.AuthManager;
+import top.mcocet.loginsequence2.auth.AuthRestrictionListener;
 import top.mcocet.loginsequence2.bungee.BungeeMessenger;
 import top.mcocet.loginsequence2.command.JoinCommand;
 import top.mcocet.loginsequence2.command.LoginSequenceCommand;
@@ -19,6 +22,8 @@ public final class LoginSequence extends JavaPlugin {
     private BungeeMessenger messenger;
     private PlayerJoinListener playerJoinListener;
     private LanguageManager languageManager;
+    private AuthManager authManager;
+    private AuthRestrictionListener authRestrictionListener;
     private boolean debug;
 
     @Override
@@ -31,7 +36,11 @@ public final class LoginSequence extends JavaPlugin {
         boolean enableBungeeExtension = getConfig().getBoolean("enable-bungee-extension", true);
         this.messenger = new BungeeMessenger(this, enableBungeeExtension);
         getLogger().info("BungeeCord 通道扩展: " + (enableBungeeExtension ? "已启用" : "已禁用") + "。");
-        this.playerJoinListener = new PlayerJoinListener(this, messenger);
+        this.authManager = new AuthManager(this);
+        this.authRestrictionListener = new AuthRestrictionListener(this, authManager);
+        getServer().getPluginManager().registerEvents(authRestrictionListener, this);
+
+        this.playerJoinListener = new PlayerJoinListener(this, messenger, authManager, authRestrictionListener);
         getServer().getPluginManager().registerEvents(playerJoinListener, this);
 
         getServer().getPluginManager().registerEvents(new PlayerRestrictionListener(this, playerJoinListener, playerJoinListener.getAllowedPlayers()), this);
@@ -61,10 +70,21 @@ public final class LoginSequence extends JavaPlugin {
 
         getCommand("join").setExecutor(new JoinCommand(this, playerJoinListener));
 
+        AuthCommand authCommand = new AuthCommand(this, authManager, playerJoinListener);
+        getCommand("register").setExecutor(authCommand);
+        getCommand("login").setExecutor(authCommand);
+        getCommand("changepassword").setExecutor(authCommand);
+        getCommand("changepw").setExecutor(authCommand);
+
         startRefreshTask();
 
         logStartupConfig();
 
+        if (authManager.isEnabled()) {
+            getLogger().info("认证系统已启用。");
+        } else {
+            getLogger().info("认证系统已禁用。");
+        }
         getLogger().info("LoginSequence 已启用，登录队列系统已加载。");
     }
 
@@ -135,6 +155,9 @@ public final class LoginSequence extends JavaPlugin {
         if (messenger != null) {
             messenger.shutdown();
         }
+        if (authManager != null) {
+            authManager.close();
+        }
         getLogger().info("LoginSequence 已禁用。");
     }
 
@@ -144,6 +167,14 @@ public final class LoginSequence extends JavaPlugin {
 
     public LanguageManager getLanguageManager() {
         return languageManager;
+    }
+
+    public AuthManager getAuthManager() {
+        return authManager;
+    }
+
+    public AuthRestrictionListener getAuthRestrictionListener() {
+        return authRestrictionListener;
     }
 
     public boolean isDebug() {

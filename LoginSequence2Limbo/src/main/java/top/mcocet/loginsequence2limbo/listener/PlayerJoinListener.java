@@ -1,28 +1,26 @@
-package top.mcocet.loginsequence2.listener;
+package top.mcocet.loginsequence2limbo.listener;
 
-import org.bukkit.ChatColor;
-import org.bukkit.GameMode;
-import org.bukkit.Location;
-import org.bukkit.World;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.scheduler.BukkitRunnable;
-import top.mcocet.loginsequence2.LoginSequence;
-import top.mcocet.loginsequence2.auth.AuthManager;
-import top.mcocet.loginsequence2.auth.AuthRestrictionListener;
-import top.mcocet.loginsequence2.bungee.BungeeMessenger;
-import top.mcocet.loginsequence2.util.LanguageManager;
+import com.loohp.limbo.Limbo;
+import com.loohp.limbo.events.EventHandler;
+import com.loohp.limbo.events.Listener;
+import com.loohp.limbo.events.player.PlayerJoinEvent;
+import com.loohp.limbo.events.player.PlayerQuitEvent;
+import com.loohp.limbo.player.Player;
+import com.loohp.limbo.scheduler.LimboTask;
+import com.loohp.limbo.utils.GameMode;
+import com.loohp.limbo.location.Location;
+import com.loohp.limbo.world.World;
+import top.mcocet.loginsequence2limbo.LoginSequence2Limbo;
+import top.mcocet.loginsequence2limbo.auth.AuthManager;
+import top.mcocet.loginsequence2limbo.auth.AuthRestrictionListener;
+import top.mcocet.loginsequence2limbo.bungee.BungeeMessenger;
+import top.mcocet.loginsequence2limbo.util.LanguageManager;
 
 import java.util.*;
 
 public class PlayerJoinListener implements Listener {
 
-    private final LoginSequence plugin;
+    private final LoginSequence2Limbo plugin;
     private final BungeeMessenger messenger;
     private final AuthManager authManager;
     private final AuthRestrictionListener authRestrictionListener;
@@ -31,39 +29,30 @@ public class PlayerJoinListener implements Listener {
     private final double threshold;
     private final LanguageManager languageManager;
 
-    // 等待队列：按优先级排序
     private final PriorityQueue<QueueEntry> waitingQueue;
-    // 已允许进入的玩家
     private final Set<UUID> allowedPlayers = new HashSet<>();
 
-    public PlayerJoinListener(LoginSequence plugin, BungeeMessenger messenger,
+    public PlayerJoinListener(LoginSequence2Limbo plugin, BungeeMessenger messenger,
                               AuthManager authManager, AuthRestrictionListener authRestrictionListener) {
         this.plugin = plugin;
         this.messenger = messenger;
         this.authManager = authManager;
         this.authRestrictionListener = authRestrictionListener;
-        FileConfiguration config = plugin.getConfig();
-        this.priorityList = config.getStringList("queue.priority");
-        this.defaultPriority = config.getInt("queue.default-priority", 0);
-        this.threshold = Math.max(0.0, Math.min(1.0, config.getDouble("queue.threshold", 0.8)));
+        this.priorityList = plugin.getConfigValueStringList("queue.priority");
+        this.defaultPriority = plugin.getConfigValueInt("queue.default-priority", 0);
+        this.threshold = Math.max(0.0, Math.min(1.0, plugin.getConfigValueDouble("queue.threshold", 0.8)));
         this.languageManager = plugin.getLanguageManager();
-
-        // 优先级数字越大越靠前
         this.waitingQueue = new PriorityQueue<>(Collections.reverseOrder(Comparator.comparingInt(QueueEntry::getPriority)));
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
+    @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         final Player player = event.getPlayer();
         final UUID uuid = player.getUniqueId();
 
-        // 设置玩家游戏模式
         applyGameMode(player);
-
-        // 设置玩家出生点
         teleportToSpawn(player);
 
-        // 如果已经允许进入，直接放行
         if (allowedPlayers.contains(uuid)) {
             return;
         }
@@ -72,103 +61,62 @@ public class PlayerJoinListener implements Listener {
         if (authManager.isEnabled()) {
             authRestrictionListener.removeAuthenticated(uuid);
             if (!authManager.isRegistered(player.getName())) {
-                player.sendMessage(ChatColor.YELLOW + "欢迎来到服务器！请使用 /register <密码> <确认密码> 注册账号");
+                player.sendMessage("[LoginSequence] 欢迎来到服务器！请使用 /register <密码> <确认密码> 注册账号");
             } else {
-                player.sendMessage(ChatColor.YELLOW + "请使用 /login <密码> 登录");
+                player.sendMessage("[LoginSequence] 请使用 /login <密码> 登录");
             }
             return;
         }
 
-        boolean autoQueue = plugin.getConfig().getBoolean("queue.auto-queue", true);
+        boolean autoQueue = plugin.getConfigValueBoolean("queue.auto-queue", true);
         if (!autoQueue) {
             player.sendMessage(languageManager.getMessage("manual-queue-hint"));
             return;
         }
 
-        // 延迟执行，等待 BungeeCord 数据刷新和锁定时间
-        long lockTime = plugin.getConfig().getLong("queue.lock-time", 3);
-        new BukkitRunnable() {
+        long lockTime = plugin.getConfigValueLong("queue.lock-time", 3);
+        Limbo.getInstance().getScheduler().runTaskLater(plugin, new LimboTask() {
             @Override
             public void run() {
-                if (!player.isOnline()) {
+                if (!player.isValid()) {
                     return;
                 }
 
-                // 先判断主服务器是否在线（缓存中有数据时直接判断）
                 if (messenger.isMainServerOnline()) {
-                    // 已在队列中则不再重复添加
                     if (isInQueue(uuid)) {
                         return;
                     }
-
-                    // 计算玩家优先级并入队
                     int priority = calculatePriority(player);
                     waitingQueue.offer(new QueueEntry(uuid, priority));
-
-                    // 通知玩家排队位置
                     sendQueueStatus(player, uuid);
-
-                    // 尝试放行队列中的玩家
                     processQueue();
                     return;
                 }
 
-                // 缓存中没有有效数据，进行实时检测（BC 优先模式下首次连接时缓存可能为空）
                 player.sendMessage(languageManager.getMessage("checking-main-server"));
                 messenger.checkMainServerOnlineAsync(3).whenComplete((online, throwable) -> {
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        if (throwable != null || !online) {
-                            player.sendMessage(languageManager.getMessage("main-offline"));
-                            return;
+                    Limbo.getInstance().getScheduler().runTask(plugin, new LimboTask() {
+                        @Override
+                        public void run() {
+                            if (throwable != null || !online) {
+                                player.sendMessage(languageManager.getMessage("main-offline"));
+                                return;
+                            }
+                            if (!player.isValid()) {
+                                return;
+                            }
+                            if (isInQueue(uuid)) {
+                                return;
+                            }
+                            int priority = calculatePriority(player);
+                            waitingQueue.offer(new QueueEntry(uuid, priority));
+                            sendQueueStatus(player, uuid);
+                            processQueue();
                         }
-
-                        // 玩家已离线则忽略
-                        if (!player.isOnline()) {
-                            return;
-                        }
-
-                        // 已在队列中则不再重复添加
-                        if (isInQueue(uuid)) {
-                            return;
-                        }
-
-                        // 计算玩家优先级并入队
-                        int priority = calculatePriority(player);
-                        waitingQueue.offer(new QueueEntry(uuid, priority));
-
-                        // 通知玩家排队位置
-                        sendQueueStatus(player, uuid);
-
-                        // 尝试放行队列中的玩家
-                        processQueue();
                     });
                 });
             }
-        }.runTaskLater(plugin, lockTime * 20L);
-    }
-
-    private void sendQueueStatus(Player player, UUID uuid) {
-        int position = getPosition(uuid);
-        int online = messenger.getMainServerPlayerCount();
-        int max = messenger.getMainServerMaxPlayers();
-        // 多服务器模式下显示总在线人数
-        int totalOnline = 0;
-        int totalMax = 0;
-        for (BungeeMessenger.ServerStatus status : messenger.getAllServerStatus().values()) {
-            if (status.isOnline()) {
-                totalOnline += status.getOnlinePlayers();
-                totalMax += status.getMaxPlayers();
-            }
-        }
-        // 如果有多个服务器在线，显示总数
-        if (totalMax > 0 && messenger.getAllServerStatus().size() > 1) {
-            online = totalOnline;
-            max = totalMax;
-        }
-        player.sendMessage(languageManager.getMessage("waiting",
-                "position", String.valueOf(position),
-                "online", String.valueOf(online),
-                "max", String.valueOf(max)));
+        }, lockTime * 20L);
     }
 
     @EventHandler
@@ -182,19 +130,37 @@ public class PlayerJoinListener implements Listener {
         processQueue();
     }
 
+    private void sendQueueStatus(Player player, UUID uuid) {
+        int position = getPosition(uuid);
+        int online = messenger.getMainServerPlayerCount();
+        int max = messenger.getMainServerMaxPlayers();
+        int totalOnline = 0;
+        int totalMax = 0;
+        for (BungeeMessenger.ServerStatus status : messenger.getAllServerStatus().values()) {
+            if (status.isOnline()) {
+                totalOnline += status.getOnlinePlayers();
+                totalMax += status.getMaxPlayers();
+            }
+        }
+        if (totalMax > 0 && messenger.getAllServerStatus().size() > 1) {
+            online = totalOnline;
+            max = totalMax;
+        }
+        player.sendMessage(languageManager.getMessage("waiting",
+                "position", String.valueOf(position),
+                "online", String.valueOf(online),
+                "max", String.valueOf(max)));
+    }
+
     private int calculatePriority(Player player) {
         for (int i = 0; i < priorityList.size(); i++) {
             String rule = priorityList.get(i);
             if (rule == null || rule.isEmpty()) continue;
-
             String[] parts = rule.split(":", 2);
             if (parts.length != 2) continue;
-
             String type = parts[0].toLowerCase();
             String value = parts[1];
-
             if ("permission".equals(type) && player.hasPermission(value)) {
-                // 列表中越靠前，优先级越高（数值越大）
                 return priorityList.size() - i;
             }
             if ("name".equals(type) && player.getName().equalsIgnoreCase(value)) {
@@ -232,7 +198,7 @@ public class PlayerJoinListener implements Listener {
         // 认证模式下，必须先通过登录认证才能入队
         if (authManager.isEnabled() && authRestrictionListener != null) {
             if (!authRestrictionListener.isAuthenticated(player.getUniqueId())) {
-                player.sendMessage(ChatColor.RED + "请先登录后再加入队列");
+                player.sendMessage("§c请先登录后再加入队列");
                 return;
             }
         }
@@ -260,9 +226,11 @@ public class PlayerJoinListener implements Listener {
     public List<String> getQueuePlayerNames() {
         List<String> names = new ArrayList<>();
         for (QueueEntry entry : waitingQueue) {
-            Player player = plugin.getServer().getPlayer(entry.getUuid());
-            if (player != null) {
-                names.add(player.getName());
+            for (Player player : Limbo.getInstance().getPlayers()) {
+                if (player.getUniqueId().equals(entry.getUuid())) {
+                    names.add(player.getName());
+                    break;
+                }
             }
         }
         return names;
@@ -277,37 +245,33 @@ public class PlayerJoinListener implements Listener {
     }
 
     private void applyGameMode(Player player) {
-        FileConfiguration config = plugin.getConfig();
-        if (!config.getBoolean("queue.set-gamemode", true)) {
+        if (!plugin.getConfigValueBoolean("queue.set-gamemode", true)) {
             return;
         }
-
-        String modeName = config.getString("queue.gamemode", "ADVENTURE");
+        String modeName = plugin.getConfigValueString("queue.gamemode", "ADVENTURE");
         GameMode gameMode;
         try {
             gameMode = GameMode.valueOf(modeName.toUpperCase());
         } catch (IllegalArgumentException | NullPointerException e) {
-            plugin.getLogger().warning("配置的游戏模式 " + modeName + " 无效，使用默认 ADVENTURE 模式。");
+            Limbo.getInstance().getConsole().sendMessage("[LoginSequence2Limbo] 配置的游戏模式 " + modeName + " 无效，使用默认 ADVENTURE 模式。");
             gameMode = GameMode.ADVENTURE;
         }
-
-        player.setGameMode(gameMode);
+        player.setGamemode(gameMode);
     }
 
     private void teleportToSpawn(Player player) {
-        FileConfiguration config = plugin.getConfig();
-        String worldName = config.getString("queue.spawn.world", "world");
-        World world = plugin.getServer().getWorld(worldName);
+        String worldName = plugin.getConfigValueString("queue.spawn.world", "world");
+        World world = Limbo.getInstance().getWorld(worldName);
         if (world == null) {
             world = player.getWorld();
         }
 
-        double centerX = config.getDouble("queue.spawn.x", 0.0);
-        double centerY = config.getDouble("queue.spawn.y", 64.0);
-        double centerZ = config.getDouble("queue.spawn.z", 0.0);
-        float pitch = (float) config.getDouble("queue.spawn.pitch", 0.0);
-        float yaw = (float) config.getDouble("queue.spawn.yaw", 0.0);
-        double radius = config.getDouble("queue.spawn.radius", 5.0);
+        double centerX = plugin.getConfigValueDouble("queue.spawn.x", 0.0);
+        double centerY = plugin.getConfigValueDouble("queue.spawn.y", 64.0);
+        double centerZ = plugin.getConfigValueDouble("queue.spawn.z", 0.0);
+        float pitch = (float) plugin.getConfigValueDouble("queue.spawn.pitch", 0.0);
+        float yaw = (float) plugin.getConfigValueDouble("queue.spawn.yaw", 0.0);
+        double radius = plugin.getConfigValueDouble("queue.spawn.radius", 5.0);
 
         double x = centerX;
         double y = centerY;
@@ -324,8 +288,7 @@ public class PlayerJoinListener implements Listener {
         player.teleport(spawnLocation);
     }
 
-    private void processQueue() {
-        // 计算所有在线主服务器的总人数和总容量
+    public void processQueue() {
         int totalMax = 0;
         int totalOnline = 0;
         boolean anyOnline = false;
@@ -335,52 +298,41 @@ public class PlayerJoinListener implements Listener {
                 int max = status.getMaxPlayers();
                 int online = status.getOnlinePlayers();
                 if (max <= 0) {
-                    max = plugin.getConfig().getInt("queue.max-online", 50);
+                    max = plugin.getConfigValueInt("queue.max-online", 50);
                 }
                 totalMax += max;
                 totalOnline += online;
             }
         }
 
-        if (plugin.isDebug()) {
-            plugin.getLogger().info("处理队列: 有在线服务器=" + anyOnline
-                    + " 总在线=" + totalOnline
-                    + " 总容量=" + totalMax
-                    + " 队列大小=" + waitingQueue.size());
-        }
-
         if (!anyOnline) {
-            if (plugin.isDebug()) {
-                plugin.getLogger().info("所有主服务器离线，暂停处理队列");
-            }
             return;
         }
 
-        // 超过阈值时暂停放行
         if (totalMax > 0 && (double) totalOnline / totalMax >= threshold) {
             notifyWaitingPlayers(languageManager.getMessage("threshold-reached"));
             return;
         }
 
         int availableSlots = Math.max(0, totalMax - totalOnline);
-        if (plugin.isDebug()) {
-            plugin.getLogger().info("可用槽位: " + availableSlots);
-        }
 
         while (availableSlots > 0 && !waitingQueue.isEmpty()) {
             QueueEntry entry = waitingQueue.poll();
             if (entry == null) break;
 
-            Player player = plugin.getServer().getPlayer(entry.getUuid());
-            if (player == null || !player.isOnline()) {
+            Player player = null;
+            for (Player p : Limbo.getInstance().getPlayers()) {
+                if (p.getUniqueId().equals(entry.getUuid())) {
+                    player = p;
+                    break;
+                }
+            }
+            if (player == null || !player.isValid()) {
                 continue;
             }
 
             allowedPlayers.add(entry.getUuid());
             player.sendMessage(languageManager.getMessage("entering"));
-            if (plugin.isDebug()) {
-                plugin.getLogger().info("放行玩家: " + player.getName());
-            }
             messenger.connectToOptimalServer(player);
             availableSlots--;
         }
@@ -388,9 +340,11 @@ public class PlayerJoinListener implements Listener {
 
     private void notifyWaitingPlayers(String message) {
         for (QueueEntry entry : waitingQueue) {
-            Player player = plugin.getServer().getPlayer(entry.getUuid());
-            if (player != null && player.isOnline()) {
-                player.sendMessage(message);
+            for (Player player : Limbo.getInstance().getPlayers()) {
+                if (player.getUniqueId().equals(entry.getUuid())) {
+                    player.sendMessage(message);
+                    break;
+                }
             }
         }
     }
