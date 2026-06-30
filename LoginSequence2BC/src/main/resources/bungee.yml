@@ -1,3 +1,0 @@
-name: LoginSequence2BC
-version: '${project.version}'
-main: top.mcocet.loginsequence2bc.LoginSequence2BC

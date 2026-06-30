@@ -1,7 +1,0 @@
-# 是否开启调试模式
-debug: false
-
-# 是否限制未登录玩家使用 /server 命令
-# 启用后，只有收到登录成功消息的玩家才能使用 /server 命令
-# 玩家退出服务器后状态重置
-restrict-server-command: false
