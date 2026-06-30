@@ -1,0 +1,3 @@
+name: LoginQueue2BC
+version: '${project.version}'
+main: top.mcocet.loginqueue2bc.LoginQueue2BC

@@ -1,36 +1,38 @@
-# LoginSequence2
+# LoginQueue2
 
-LoginSequence2 is a Minecraft server login queue system supporting Spigot/Paper subservers, BungeeCord, Velocity proxies, and Limbo lightweight login servers. Built with Maven multi-module aggregation, it manages five companion plugins in a unified project.
-This plugin suite replaces the legacy LoginSequence plugin, having been completely refactored with significantly improved code quality and efficiency.
+### Tip: The plugin group has been renamed from LoginSequence2 to LoginQueue2.
 
-> **LoginSequence2** is a next-generation Minecraft login queue solution, providing high-performance player queuing, load balancing, and cross-server transfer capabilities for network servers. Supports multiple platform combinations including Spigot/Paper, BungeeCord, Velocity, and Limbo to meet the deployment needs of various server scales.
+LoginQueue2 is a Minecraft server login queue system supporting Spigot/Paper subservers, BungeeCord, Velocity proxies, and Limbo lightweight login servers. Built with Maven multi-module aggregation, it manages five companion plugins in a unified project.
+This plugin suite replaces the legacy LoginQueue plugin, having been completely refactored with significantly improved code quality and efficiency.
+
+> **LoginQueue2** is a next-generation Minecraft login queue solution, providing high-performance player queuing, load balancing, and cross-server transfer capabilities for network servers. Supports multiple platform combinations including Spigot/Paper, BungeeCord, Velocity, and Limbo to meet the deployment needs of various server scales.
 
 ## Project Structure
 
 ```
-LoginSequence/
+LoginQueue/
 ├── pom.xml                          # Root aggregator POM
-├── LoginSequence2/                  # Main plugin (Spigot/Paper)
-│   └── src/main/java/top/mcocet/loginsequence2/
-├── LoginSequence2BC/                # BungeeCord proxy companion plugin
-│   └── src/main/java/top/mcocet/loginsequence2bc/
-├── LoginSequence2Online/            # Subserver status reporting plugin
-│   └── src/main/java/top/mcocet/loginsequence2online/
-├── LoginSequence2VC/                # Velocity proxy companion plugin
-│   └── src/main/java/top/mcocet/loginsequence2vc/
-└── LoginSequence2Limbo/             # Limbo login server companion plugin
-    └── src/main/java/top/mcocet/loginsequence2limbo/
+├── LoginQueue2/                  # Main plugin (Spigot/Paper)
+│   └── src/main/java/top/mcocet/loginqueue2/
+├── LoginQueue2BC/                # BungeeCord proxy companion plugin
+│   └── src/main/java/top/mcocet/loginqueue2bc/
+├── LoginQueue2Online/            # Subserver status reporting plugin
+│   └── src/main/java/top/mcocet/loginqueue2online/
+├── LoginQueue2VC/                # Velocity proxy companion plugin
+│   └── src/main/java/top/mcocet/loginqueue2vc/
+└── LoginQueue2Limbo/             # Limbo login server companion plugin
+    └── src/main/java/top/mcocet/loginqueue2limbo/
 ```
 
 ## Module Overview
 
 | Module | Platform | Purpose |
 |--------|----------|---------|
-| LoginSequence2 | Spigot/Paper 1.13+ | Main plugin providing login queue, player restrictions, commands, and more |
-| LoginSequence2BC | BungeeCord | Proxy plugin handling cross-server transfers and server info queries |
-| LoginSequence2Online | Spigot/Paper 1.14+ | Subserver plugin reporting online status to the main server |
-| LoginSequence2VC | Velocity 3.x | Velocity proxy plugin with same functionality as LS2BC |
-| LoginSequence2Limbo | Limbo | Lightweight login server plugin providing queue and status sync |
+| LoginQueue2 | Spigot/Paper 1.13+ | Main plugin providing login queue, player restrictions, commands, and more |
+| LoginQueue2BC | BungeeCord | Proxy plugin handling cross-server transfers and server info queries |
+| LoginQueue2Online | Spigot/Paper 1.14+ | Subserver plugin reporting online status to the main server |
+| LoginQueue2VC | Velocity 3.x | Velocity proxy plugin with same functionality as LS2BC |
+| LoginQueue2Limbo | Limbo | Lightweight login server plugin providing queue and status sync |
 
 ## Build
 
@@ -42,22 +44,22 @@ After building, all JAR files are automatically copied to the `dist/` folder at 
 
 ```
 dist/
-├── LoginSequence2-1.0.1.jar
-├── LoginSequence2BC-1.0.1.jar
-├── LoginSequence2Online-1.0.1.jar
-├── LoginSequence2VC-1.0.1.jar
-└── LoginSequence2Limbo-1.0.1.jar
+├── LoginQueue2-1.0.1.jar
+├── LoginQueue2BC-1.0.1.jar
+├── LoginQueue2Online-1.0.1.jar
+├── LoginQueue2VC-1.0.1.jar
+└── LoginQueue2Limbo-1.0.1.jar
 ```
 
 ## Installation
 
 ### Basic Installation (Single Server)
 
-Place `LoginSequence2-1.0.1.jar` into the `plugins/` folder of your login server (Lobby).
+Place `LoginQueue2-1.0.1.jar` into the `plugins/` folder of your login server (Lobby).
 
 ### Basic Installation (Limbo Login Server)
 
-Place `LoginSequence2Limbo-1.0.1.jar` into the `plugins/` folder of your Limbo server.
+Place `LoginQueue2Limbo-1.0.1.jar` into the `plugins/` folder of your Limbo server.
 
 **Limbo Mode Features**:
 - Uses Limbo as a lightweight login server with minimal resource usage
@@ -68,8 +70,8 @@ Place `LoginSequence2Limbo-1.0.1.jar` into the `plugins/` folder of your Limbo s
 
 **No BC plugin required** — uses UDP for direct status sync and BungeeCord native channels for player transfers.
 
-1. **Login Server (Lobby)**: Place `LoginSequence2-1.0.1.jar` (Spigot/Paper) or `LoginSequence2Limbo-1.0.1.jar` (Limbo)
-2. **Main Servers (Main1, Main2...)**: Place `LoginSequence2Online-1.0.1.jar`
+1. **Login Server (Lobby)**: Place `LoginQueue2-1.0.1.jar` (Spigot/Paper) or `LoginQueue2Limbo-1.0.1.jar` (Limbo)
+2. **Main Servers (Main1, Main2...)**: Place `LoginQueue2Online-1.0.1.jar`
 
 Configure `config.yml`:
 ```yaml
@@ -92,9 +94,9 @@ udp-sync:
 
 **BC plugin required** — uses BungeeCord custom plugin messaging channels.
 
-1. **Login Server (Lobby)**: Place `LoginSequence2-1.0.1.jar` (Spigot/Paper) or `LoginSequence2Limbo-1.0.1.jar` (Limbo)
-2. **BungeeCord Proxy**: Place `LoginSequence2BC-1.0.1.jar`
-3. **Main Servers (Main)**: Place `LoginSequence2Online-1.0.1.jar`
+1. **Login Server (Lobby)**: Place `LoginQueue2-1.0.1.jar` (Spigot/Paper) or `LoginQueue2Limbo-1.0.1.jar` (Limbo)
+2. **BungeeCord Proxy**: Place `LoginQueue2BC-1.0.1.jar`
+3. **Main Servers (Main)**: Place `LoginQueue2Online-1.0.1.jar`
 
 Configure `config.yml`:
 ```yaml
@@ -106,9 +108,9 @@ udp-sync:
 
 ### Network Installation (Velocity + BC Priority Mode)
 
-1. **Login Server (Lobby)**: Place `LoginSequence2-1.0.1.jar` (Spigot/Paper) or `LoginSequence2Limbo-1.0.1.jar` (Limbo)
-2. **Velocity Proxy**: Place `LoginSequence2VC-1.0.1.jar`
-3. **Main Servers (Main)**: Place `LoginSequence2Online-1.0.1.jar`
+1. **Login Server (Lobby)**: Place `LoginQueue2-1.0.1.jar` (Spigot/Paper) or `LoginQueue2Limbo-1.0.1.jar` (Limbo)
+2. **Velocity Proxy**: Place `LoginQueue2VC-1.0.1.jar`
+3. **Main Servers (Main)**: Place `LoginQueue2Online-1.0.1.jar`
 
 Configure `config.yml`:
 ```yaml
@@ -120,9 +122,9 @@ udp-sync:
 
 ## Configuration
 
-### LoginSequence2 Main Plugin
+### LoginQueue2 Main Plugin
 
-Edit `plugins/LoginSequence/config.yml`:
+Edit `plugins/LoginQueue/config.yml`:
 
 ```yaml
 # Plugin language (supports zh_CN, zh_TW, en_US)
@@ -143,7 +145,7 @@ udp-sync:
   # UDP request timeout (milliseconds)
   timeout: 3000
   # Pre-shared key (used to encrypt communication keys and prevent eavesdropping)
-  planned-key: "loginsequence"
+  planned-key: "loginqueue"
   # Main server list (supports multi-main server load balancing)
   servers:
     - name: "main1"
@@ -167,8 +169,8 @@ queue:
   balance-strategy: LEAST_PLAYERS
   # Sort priority (higher position = higher priority)
   priority:
-    - "permission:loginsequence.vip"
-    - "permission:loginsequence.priority"
+    - "permission:loginqueue.vip"
+    - "permission:loginqueue.priority"
   # Default priority (higher number = higher priority)
   default-priority: 0
   # Refresh interval for main server info to BungeeCord (seconds)
@@ -201,7 +203,7 @@ queue:
   disable-end: true
   # Disable portals (prevent players from teleporting through any portal)
   disable-portals: true
-  # Admins bypass above restrictions (requires loginsequence.admin.bypass permission)
+  # Admins bypass above restrictions (requires loginqueue.admin.bypass permission)
   admin-bypass: true
   # Restrict player activity range (pull back to center if exceeded)
   restrict-range: false
@@ -227,9 +229,9 @@ queue:
     name: "&aJoin Game"
 ```
 
-### LoginSequence2Online (Subserver)
+### LoginQueue2Online (Subserver)
 
-Edit `plugins/LoginSequence2Online/config.yml`:
+Edit `plugins/LoginQueue2Online/config.yml`:
 
 ```yaml
 # Current subserver name in proxy (must match the name configured in LS2)
@@ -241,66 +243,66 @@ refresh-interval: 5
 
 ## Commands
 
-### LoginSequence2 Main Plugin (Login Server)
+### LoginQueue2 Main Plugin (Login Server)
 
 | Command | Permission | Description |
 |---------|------------|-------------|
-| `/logseq skip [player]` | `loginsequence.admin.skip` | Skip queue and send player directly to main server |
-| `/logseq list` | `loginsequence.admin.list` | Show current queue list |
-| `/logseq status` | `loginsequence.admin.status` | Show main server status (online count, load, etc.) |
-| `/logseq refresh` | `loginsequence.admin.refresh` | Manually refresh main server status cache |
-| `/logseq reload` | `loginsequence.admin.reload` | Reload configuration and language files |
-| `/logseq debug` | `loginsequence.admin.debug` | Toggle debug mode (output detailed logs) |
-| `/logseq info` | `loginsequence.admin.info` | View detailed info of all main servers |
+| `/logseq skip [player]` | `loginqueue.admin.skip` | Skip queue and send player directly to main server |
+| `/logseq list` | `loginqueue.admin.list` | Show current queue list |
+| `/logseq status` | `loginqueue.admin.status` | Show main server status (online count, load, etc.) |
+| `/logseq refresh` | `loginqueue.admin.refresh` | Manually refresh main server status cache |
+| `/logseq reload` | `loginqueue.admin.reload` | Reload configuration and language files |
+| `/logseq debug` | `loginqueue.admin.debug` | Toggle debug mode (output detailed logs) |
+| `/logseq info` | `loginqueue.admin.info` | View detailed info of all main servers |
 | `/logseq help` | - | Show help information |
 | `/join` | - | Manually join the queue (used when auto-queue is disabled) |
 
 **Command alias**: `/ls` is an alias for `/logseq`
 
-### LoginSequence2BC (BungeeCord Proxy)
+### LoginQueue2BC (BungeeCord Proxy)
 
 | Command | Permission | Description |
 |---------|------------|-------------|
-| `/lsbc reload` | `loginsequence2bc.admin` | Reload configuration file |
-| `/lsbc debug` | `loginsequence2bc.admin` | Toggle debug mode |
-| `/lsbc help` | `loginsequence2bc.admin` | Show help information |
+| `/lsbc reload` | `loginqueue2bc.admin` | Reload configuration file |
+| `/lsbc debug` | `loginqueue2bc.admin` | Toggle debug mode |
+| `/lsbc help` | `loginqueue2bc.admin` | Show help information |
 
-**Command alias**: `/loginsequencebc`
+**Command alias**: `/loginqueuebc`
 
-### LoginSequence2VC (Velocity Proxy)
+### LoginQueue2VC (Velocity Proxy)
 
 | Command | Permission | Description |
 |---------|------------|-------------|
-| `/lsvc reload` | `loginsequence2vc.admin` | Reload configuration file |
-| `/lsvc debug` | `loginsequence2vc.admin` | Toggle debug mode |
-| `/lsvc help` | `loginsequence2vc.admin` | Show help information |
+| `/lsvc reload` | `loginqueue2vc.admin` | Reload configuration file |
+| `/lsvc debug` | `loginqueue2vc.admin` | Toggle debug mode |
+| `/lsvc help` | `loginqueue2vc.admin` | Show help information |
 
-**Command alias**: `/loginsequencevc`
+**Command alias**: `/loginqueuevc`
 
-### LoginSequence2Online (Subserver)
+### LoginQueue2Online (Subserver)
 
 This plugin has no commands. It runs automatically after startup and reports server status to the login server via UDP.
 
 ## Permissions
 
-### LoginSequence2
+### LoginQueue2
 
 | Permission | Description |
 |------------|-------------|
-| `loginsequence.admin.skip` | Allow using `/logseq skip` to bypass queue |
-| `loginsequence.admin.list` | Allow viewing the queue list |
-| `loginsequence.admin.status` | Allow viewing server status |
-| `loginsequence.admin.refresh` | Allow manually refreshing server status |
-| `loginsequence.admin.reload` | Allow reloading configuration |
-| `loginsequence.admin.debug` | Allow toggling debug mode |
-| `loginsequence.admin.info` | Allow viewing detailed server info |
-| `loginsequence.admin.bypass` | Bypass login server restrictions (movement, interaction, etc.) |
-| `loginsequence.vip` | VIP queue priority |
-| `loginsequence.priority` | Priority queue permission |
+| `loginqueue.admin.skip` | Allow using `/logseq skip` to bypass queue |
+| `loginqueue.admin.list` | Allow viewing the queue list |
+| `loginqueue.admin.status` | Allow viewing server status |
+| `loginqueue.admin.refresh` | Allow manually refreshing server status |
+| `loginqueue.admin.reload` | Allow reloading configuration |
+| `loginqueue.admin.debug` | Allow toggling debug mode |
+| `loginqueue.admin.info` | Allow viewing detailed server info |
+| `loginqueue.admin.bypass` | Bypass login server restrictions (movement, interaction, etc.) |
+| `loginqueue.vip` | VIP queue priority |
+| `loginqueue.priority` | Priority queue permission |
 
 ## Detailed Plugin Features
 
-### LoginSequence2 (Main Plugin)
+### LoginQueue2 (Main Plugin)
 
 **Platform**: Spigot/Paper 1.13+
 **Install Location**: Login Server (Lobby)
@@ -321,7 +323,7 @@ This plugin has no commands. It runs automatically after startup and reports ser
 - `ROUND_ROBIN`: Rotate through servers in order
 - `RANDOM`: Randomly select a server
 
-### LoginSequence2BC (BungeeCord Proxy Plugin)
+### LoginQueue2BC (BungeeCord Proxy Plugin)
 
 **Platform**: BungeeCord
 **Install Location**: BungeeCord Proxy
@@ -334,7 +336,7 @@ This plugin has no commands. It runs automatically after startup and reports ser
 
 **Applicable Scenario**: Required when using BC channel priority mode
 
-### LoginSequence2VC (Velocity Proxy Plugin)
+### LoginQueue2VC (Velocity Proxy Plugin)
 
 **Platform**: Velocity 3.x
 **Install Location**: Velocity Proxy
@@ -343,7 +345,7 @@ This plugin has no commands. It runs automatically after startup and reports ser
 
 **Applicable Scenario**: Required when using Velocity proxy with BC channel priority mode
 
-### LoginSequence2Online (Subserver Status Reporting Plugin)
+### LoginQueue2Online (Subserver Status Reporting Plugin)
 
 **Platform**: Spigot/Paper 1.14+
 **Install Location**: Each Main Server
@@ -361,13 +363,13 @@ This plugin has no commands. It runs automatically after startup and reports ser
 | Channel | Description | Usage Scenario |
 |---------|-------------|----------------|
 | `BungeeCord` | BungeeCord native channel for direct player transfers | UDP priority mode |
-| `loginsequence:connectother` | Notify proxy to transfer specified player to target server | BC priority mode |
-| `loginsequence:connectrequest` | Player actively requests connection to target server | BC priority mode |
-| `loginsequence:serverinfo` | Query / report server status information | BC priority mode |
+| `loginqueue:connectother` | Notify proxy to transfer specified player to target server | BC priority mode |
+| `loginqueue:connectrequest` | Player actively requests connection to target server | BC priority mode |
+| `loginqueue:serverinfo` | Query / report server status information | BC priority mode |
 
 ## Requirements
 
-- Java 8+ (LoginSequence2VC requires Java 17)
+- Java 8+ (LoginQueue2VC requires Java 17)
 - Maven 3.6+
 
 ## License

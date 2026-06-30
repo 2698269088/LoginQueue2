@@ -1,0 +1,130 @@
+# 插件语言（支持 zh_CN、zh_TW、en_US）
+language: zh_CN
+
+# 是否启用 BungeeCord 通道扩展（需要配合 LoginQueue2BC 使用）
+enable-bungee-extension: false
+
+# 是否启用调试日志（输出详细的插件运行信息）
+debug: false
+
+# 认证系统配置
+auth:
+  # 是否启用登录/注册认证功能
+  enabled: false
+  # 密码最小长度
+  min-password-length: 4
+  # 密码最大长度
+  max-password-length: 32
+  # 注册命令冷却时间（秒）
+  register-cooldown: 5
+  # 登录命令冷却时间（秒）
+  login-cooldown: 1
+  # 登录成功后是否自动加入排队队列
+  auto-queue-after-login: false
+
+# UDP 服务器信息同步配置
+udp-sync:
+  # 是否启用 UDP 服务器信息同步
+  enabled: false
+  # 信息获取优先级: BC_CHANNEL 先使用 BungeeCord 消息通道, UDP 先使用 UDP, MSLP 先使用 Minecraft Server List Ping
+  priority: BC_CHANNEL
+  # UDP 请求超时时间（毫秒）
+  timeout: 3000
+  # 计划好的预共享密钥（用于加密传输通信密钥，防止窃听）
+  # 此密钥只能手动配置，不会通过网络传输，建议两端配置相同
+  # 建议修改为非预设密钥
+  planned-key: "loginqueue2"
+  # 主服务器列表（支持多主服务器负载均衡）
+  # 考虑到使用多大厅的用户基本都是大型服务器
+  # 大概率也就有多个BC/VC端
+  # 所以这里仅通知BC/VC跳转到main-server配置的主服转移玩家
+  servers:
+    - name: "main1"
+      host: "127.0.0.1"
+      port: 16647
+      # Minecraft 游戏端口（用于 MSLP 协议直连查询）
+      # 若设置则直接通过 MSLP 协议查询该端口
+      # 若不设置（注释掉或留空），MSLP 优先模式下会通过 BungeeCord 原生 ServerIP 协议获取端口后再查询
+      game-port:
+      secret-key: ""
+      max-online: 50
+    - name: "main2"
+      host: "127.0.0.1"
+      port: 16648
+      game-port:
+      secret-key: ""
+      max-online: 50
+    # - name: "main3"
+    #   host: "127.0.0.1"
+    #   port: 16649
+    #   secret-key: ""
+    #   max-online: 50
+
+# 登录队列配置
+queue:
+  # 主服务器在 BungeeCord 中的名称（单服务器模式使用，多服务器模式请使用 udp-sync.servers）
+  main-server: "main"
+  # 主服务器最大可连接玩家数（通过配置文件设置，单服务器模式使用）
+  max-online: 50
+  # 负载均衡策略: LEAST_PLAYERS 最少玩家, LEAST_LOAD 最低负载, ROUND_ROBIN 轮询, RANDOM 随机
+  balance-strategy: LEAST_PLAYERS
+  # 排序优先级（越靠前优先级越高）
+  # 支持 permission:xxx 和 name:xxx 两种匹配方式
+  priority:
+    - "permission:loginqueue2.vip"
+    - "permission:loginqueue2.priority"
+    - "name:Player1"
+  # 默认优先级（数字越大越优先）
+  default-priority: 0
+  # 向 BungeeCord 刷新主服信息的周期（秒）
+  refresh-interval: 5
+  # 主服务器离线时的刷新周期（秒）
+  offline-refresh-interval: 10
+  # 主服务器连接阈值（0.0 - 1.0），超过此百分比时暂停放行新玩家
+  threshold: 0.8
+  # 是否限制排队中的玩家移动
+  restrict-movement: false
+  # 是否限制玩家活动范围（超出范围拉回中心）
+  restrict-range: false
+  # 玩家活动范围限制（以出生点为中心，单位为方块）
+  range-limit: 10
+  # 玩家加入后是否自动进入排队队列
+  auto-queue: false
+  # 玩家加入后锁定等待的时间（秒），在此期间玩家无法交互
+  lock-time: 3
+  # 玩家加入后是否设置游戏模式
+  set-gamemode: true
+  # 玩家加入后的游戏模式（SURVIVAL, CREATIVE, ADVENTURE, SPECTATOR）
+  gamemode: ADVENTURE
+  # 是否允许玩家与方块交互（点击按钮、开门等）
+  allow-block-interact: false
+  # 管理员是否不受上述限制（拥有 loginqueue2.admin.bypass 权限）
+  admin-bypass: true
+  # 登录点保护（禁止爆炸、取消玩家伤害、禁止 PVP）
+  spawn-protection: true
+  # 登录点保护区域半径（以出生点为中心，0 表示全地图保护）
+  spawn-protection-radius: 0
+  # 手动排队时发放的物品配置
+  queue-item:
+    # 物品所在槽位（0-8 为主手栏）
+    slot: 4
+    # 物品类型（Limbo 使用 minecraft: 命名空间）
+    material: "minecraft:beacon"
+    # 物品显示名称
+    name: "&a加入游戏"
+  # 玩家出生点配置
+  spawn:
+    # 出生点世界
+    world: "world"
+    # 出生点中心 X 坐标
+    x: 22.0
+    # 出生点中心 Y 坐标
+    y: 16.0
+    # 出生点中心 Z 坐标
+    z: 22.0
+    # 出生点朝向（俯仰角）
+    pitch: 0.0
+    # 出生点朝向（偏航角）
+    yaw: 0.0
+    # 随机出生半径（在中心点周围此半径内随机生成位置，0 表示固定位置）
+    radius: 8.5

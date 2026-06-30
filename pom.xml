@@ -5,20 +5,20 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>top.mcocet</groupId>
-    <artifactId>LoginSequence-parent</artifactId>
-    <version>1.2.0</version>
+    <artifactId>LoginQueue2-parent</artifactId>
+    <version>1.3</version>
     <packaging>pom</packaging>
 
-    <name>LoginSequence Parent</name>
+    <name>LoginQueue Parent</name>
     <description>登录队列插件组项目</description>
     <url>https://home.mcocet.top</url>
 
     <modules>
-        <module>LoginSequence2</module>
-        <module>LoginSequence2Limbo</module>
-        <module>LoginSequence2Online</module>
-        <module>LoginSequence2BC</module>
-        <module>LoginSequence2VC</module>
+        <module>LoginQueue2</module>
+        <module>LoginQueue2Limbo</module>
+        <module>LoginQueue2Online</module>
+        <module>LoginQueue2BC</module>
+        <module>LoginQueue2VC</module>
     </modules>
 
     <properties>

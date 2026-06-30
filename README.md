@@ -1,36 +1,38 @@
-# LoginSequence2
+# LoginQueue2
 
-LoginSequence2 是一个 Minecraft 服务器登录队列系统，支持 Spigot/Paper 子服务器、BungeeCord、Velocity 代理端和 Limbo 轻量级登录服。通过 Maven 多模块聚合构建，统一管理五个配套插件。
-本插件组是为了替代旧版的LoginSequence插件，经过彻底重构，代码质量和效率明显好过旧版。
+### 提示：插件组已从LoginSequence2更名为LoginQueue2。
 
-> **LoginSequence2** 是新一代 Minecraft 登录队列解决方案，为群组服提供高性能的玩家排队、负载均衡和跨服转移功能。支持 Spigot/Paper、BungeeCord、Velocity 和 Limbo 多种平台组合，满足不同规模服务器的部署需求。
+LoginQueue2 是一个 Minecraft 服务器登录队列系统，支持 Spigot/Paper 子服务器、BungeeCord、Velocity 代理端和 Limbo 轻量级登录服。通过 Maven 多模块聚合构建，统一管理五个配套插件。
+本插件组是为了替代旧版的LoginQueue插件，经过彻底重构，代码质量和效率明显好过旧版。
+
+> **LoginQueue2** 是新一代 Minecraft 登录队列解决方案，为群组服提供高性能的玩家排队、负载均衡和跨服转移功能。支持 Spigot/Paper、BungeeCord、Velocity 和 Limbo 多种平台组合，满足不同规模服务器的部署需求。
 
 ## 项目结构
 
 ```
-LoginSequence/
+LoginQueue/
 ├── pom.xml                          # 根聚合 POM
-├── LoginSequence2/                  # 主插件（Spigot/Paper）
-│   └── src/main/java/top/mcocet/loginsequence2/
-├── LoginSequence2BC/                # BungeeCord 代理端配套插件
-│   └── src/main/java/top/mcocet/loginsequence2bc/
-├── LoginSequence2Online/            # 子服务器在线状态上报插件
-│   └── src/main/java/top/mcocet/loginsequence2online/
-├── LoginSequence2VC/                # Velocity 代理端配套插件
-│   └── src/main/java/top/mcocet/loginsequence2vc/
-└── LoginSequence2Limbo/             # Limbo 登录服配套插件
-    └── src/main/java/top/mcocet/loginsequence2limbo/
+├── LoginQueue2/                  # 主插件（Spigot/Paper）
+│   └── src/main/java/top/mcocet/loginqueue2/
+├── LoginQueue2BC/                # BungeeCord 代理端配套插件
+│   └── src/main/java/top/mcocet/loginqueue2bc/
+├── LoginQueue2Online/            # 子服务器在线状态上报插件
+│   └── src/main/java/top/mcocet/loginqueue2online/
+├── LoginQueue2VC/                # Velocity 代理端配套插件
+│   └── src/main/java/top/mcocet/loginqueue2vc/
+└── LoginQueue2Limbo/             # Limbo 登录服配套插件
+    └── src/main/java/top/mcocet/loginqueue2limbo/
 ```
 
 ## 模块说明
 
 | 模块 | 平台 | 作用 |
 |------|------|------|
-| LoginSequence2 | Spigot/Paper 1.13+ | 主插件，提供登录队列、玩家限制、指令等功能 |
-| LoginSequence2BC | BungeeCord | 代理端插件，处理跨服转移和服务器信息查询 |
-| LoginSequence2Online | Spigot/Paper 1.14+ | 子服务器插件，上报本服务器在线状态 |
-| LoginSequence2VC | Velocity 3.x | Velocity 代理端插件，功能同 LS2BC |
-| LoginSequence2Limbo | Limbo | 轻量级登录服插件，提供排队功能和状态同步 |
+| LoginQueue2 | Spigot/Paper 1.13+ | 主插件，提供登录队列、玩家限制、指令等功能 |
+| LoginQueue2BC | BungeeCord | 代理端插件，处理跨服转移和服务器信息查询 |
+| LoginQueue2Online | Spigot/Paper 1.14+ | 子服务器插件，上报本服务器在线状态 |
+| LoginQueue2VC | Velocity 3.x | Velocity 代理端插件，功能同 LS2BC |
+| LoginQueue2Limbo | Limbo | 轻量级登录服插件，提供排队功能和状态同步 |
 
 ## 构建
 
@@ -42,22 +44,22 @@ mvn clean package
 
 ```
 dist/
-├── LoginSequence2-1.0.1.jar
-├── LoginSequence2BC-1.0.1.jar
-├── LoginSequence2Online-1.0.1.jar
-├── LoginSequence2VC-1.0.1.jar
-└── LoginSequence2Limbo-1.0.1.jar
+├── LoginQueue2-1.0.1.jar
+├── LoginQueue2BC-1.0.1.jar
+├── LoginQueue2Online-1.0.1.jar
+├── LoginQueue2VC-1.0.1.jar
+└── LoginQueue2Limbo-1.0.1.jar
 ```
 
 ## 安装
 
 ### 基础安装（单服务器）
 
-将 `LoginSequence2-1.0.1.jar` 放入登录服（Lobby）的 `plugins/` 文件夹。
+将 `LoginQueue2-1.0.1.jar` 放入登录服（Lobby）的 `plugins/` 文件夹。
 
 ### 基础安装（Limbo 登录服）
 
-将 `LoginSequence2Limbo-1.0.1.jar` 放入 Limbo 服务器的 `plugins/` 文件夹。
+将 `LoginQueue2Limbo-1.0.1.jar` 放入 Limbo 服务器的 `plugins/` 文件夹。
 
 **Limbo 模式特点**：
 - 使用 Limbo 作为轻量级登录服，占用资源极低
@@ -68,8 +70,8 @@ dist/
 
 **无需安装 BC 插件**，使用 UDP 直接同步状态 + BungeeCord 原生通道转移玩家。
 
-1. **登录服（Lobby）**：放入 `LoginSequence2-1.0.1.jar`（Spigot/Paper）或 `LoginSequence2Limbo-1.0.1.jar`（Limbo）
-2. **主服务器（Main1, Main2...）**：放入 `LoginSequence2Online-1.0.1.jar`
+1. **登录服（Lobby）**：放入 `LoginQueue2-1.0.1.jar`（Spigot/Paper）或 `LoginQueue2Limbo-1.0.1.jar`（Limbo）
+2. **主服务器（Main1, Main2...）**：放入 `LoginQueue2Online-1.0.1.jar`
 
 配置 `config.yml`:
 ```yaml
@@ -92,9 +94,9 @@ udp-sync:
 
 **需要安装 BC 插件**，使用 BungeeCord 自定义通道通信。
 
-1. **登录服（Lobby）**：放入 `LoginSequence2-1.0.1.jar`（Spigot/Paper）或 `LoginSequence2Limbo-1.0.1.jar`（Limbo）
-2. **BungeeCord 代理**：放入 `LoginSequence2BC-1.0.1.jar`
-3. **主服务器（Main）**：放入 `LoginSequence2Online-1.0.1.jar`
+1. **登录服（Lobby）**：放入 `LoginQueue2-1.0.1.jar`（Spigot/Paper）或 `LoginQueue2Limbo-1.0.1.jar`（Limbo）
+2. **BungeeCord 代理**：放入 `LoginQueue2BC-1.0.1.jar`
+3. **主服务器（Main）**：放入 `LoginQueue2Online-1.0.1.jar`
 
 配置 `config.yml`:
 ```yaml
@@ -106,9 +108,9 @@ udp-sync:
 
 ### 群组服安装（Velocity + BC 优先模式）
 
-1. **登录服（Lobby）**：放入 `LoginSequence2-1.0.1.jar`（Spigot/Paper）或 `LoginSequence2Limbo-1.0.1.jar`（Limbo）
-2. **Velocity 代理**：放入 `LoginSequence2VC-1.0.1.jar`
-3. **主服务器（Main）**：放入 `LoginSequence2Online-1.0.1.jar`
+1. **登录服（Lobby）**：放入 `LoginQueue2-1.0.1.jar`（Spigot/Paper）或 `LoginQueue2Limbo-1.0.1.jar`（Limbo）
+2. **Velocity 代理**：放入 `LoginQueue2VC-1.0.1.jar`
+3. **主服务器（Main）**：放入 `LoginQueue2Online-1.0.1.jar`
 
 配置 `config.yml`:
 ```yaml
@@ -120,9 +122,9 @@ udp-sync:
 
 ## 配置
 
-### LoginSequence2 主插件
+### LoginQueue2 主插件
 
-编辑 `plugins/LoginSequence/config.yml`：
+编辑 `plugins/LoginQueue/config.yml`：
 
 ```yaml
 # 插件语言（支持 zh_CN、zh_TW、en_US）
@@ -143,7 +145,7 @@ udp-sync:
   # UDP 请求超时时间（毫秒）
   timeout: 3000
   # 预共享密钥（用于加密传输通信密钥，防止窃听）
-  planned-key: "loginsequence"
+  planned-key: "loginqueue"
   # 主服务器列表（支持多主服务器负载均衡）
   servers:
     - name: "main1"
@@ -167,8 +169,8 @@ queue:
   balance-strategy: LEAST_PLAYERS
   # 排序优先级（越靠前优先级越高）
   priority:
-    - "permission:loginsequence.vip"
-    - "permission:loginsequence.priority"
+    - "permission:loginqueue.vip"
+    - "permission:loginqueue.priority"
   # 默认优先级（数字越大越优先）
   default-priority: 0
   # 向 BungeeCord 刷新主服信息的周期（秒）
@@ -201,7 +203,7 @@ queue:
   disable-end: true
   # 是否禁用传送门（禁止玩家通过任何传送门进行传送）
   disable-portals: true
-  # 管理员是否不受上述限制（拥有 loginsequence.admin.bypass 权限）
+  # 管理员是否不受上述限制（拥有 loginqueue.admin.bypass 权限）
   admin-bypass: true
   # 是否限制玩家活动范围（超出范围拉回中心）
   restrict-range: false
@@ -227,9 +229,9 @@ queue:
     name: "&a加入游戏"
 ```
 
-### LoginSequence2Online（子服务器）
+### LoginQueue2Online（子服务器）
 
-编辑 `plugins/LoginSequence2Online/config.yml`：
+编辑 `plugins/LoginQueue2Online/config.yml`：
 
 ```yaml
 # 当前子服务器在代理端中的名称（必须与 LS2 配置中的名称一致）
@@ -241,82 +243,82 @@ refresh-interval: 5
 
 ## 指令
 
-### LoginSequence2 主插件（登录服）
+### LoginQueue2 主插件（登录服）
 
 | 指令 | 权限 | 说明 |
 |------|------|------|
-| `/logseq skip [玩家名]` | `loginsequence.admin.skip` | 跳过排队，直接将玩家送入主服务器 |
-| `/logseq list` | `loginsequence.admin.list` | 显示当前排队玩家列表 |
-| `/logseq status` | `loginsequence.admin.status` | 显示主服务器状态（在线人数、负载等） |
-| `/logseq refresh` | `loginsequence.admin.refresh` | 手动刷新主服务器状态缓存 |
-| `/logseq reload` | `loginsequence.admin.reload` | 重载配置文件和语言文件 |
-| `/logseq debug` | `loginsequence.admin.debug` | 切换调试模式（输出详细日志） |
-| `/logseq info` | `loginsequence.admin.info` | 查看所有主服务器详细信息 |
+| `/logseq skip [玩家名]` | `loginqueue.admin.skip` | 跳过排队，直接将玩家送入主服务器 |
+| `/logseq list` | `loginqueue.admin.list` | 显示当前排队玩家列表 |
+| `/logseq status` | `loginqueue.admin.status` | 显示主服务器状态（在线人数、负载等） |
+| `/logseq refresh` | `loginqueue.admin.refresh` | 手动刷新主服务器状态缓存 |
+| `/logseq reload` | `loginqueue.admin.reload` | 重载配置文件和语言文件 |
+| `/logseq debug` | `loginqueue.admin.debug` | 切换调试模式（输出详细日志） |
+| `/logseq info` | `loginqueue.admin.info` | 查看所有主服务器详细信息 |
 | `/logseq help` | - | 显示帮助信息 |
 | `/join` | - | 手动加入排队队列（非自动排队模式时使用） |
 
 **指令别名**: `/ls` 是 `/logseq` 的别名
 
-### LoginSequence2BC（BungeeCord 代理端）
+### LoginQueue2BC（BungeeCord 代理端）
 
 | 指令 | 权限 | 说明 |
 |------|------|------|
-| `/lsbc reload` | `loginsequence2bc.admin` | 重载配置文件 |
-| `/lsbc debug` | `loginsequence2bc.admin` | 切换调试模式 |
-| `/lsbc help` | `loginsequence2bc.admin` | 显示帮助信息 |
+| `/lsbc reload` | `loginqueue2bc.admin` | 重载配置文件 |
+| `/lsbc debug` | `loginqueue2bc.admin` | 切换调试模式 |
+| `/lsbc help` | `loginqueue2bc.admin` | 显示帮助信息 |
 
-**指令别名**: `/loginsequencebc`
+**指令别名**: `/loginqueuebc`
 
-### LoginSequence2VC（Velocity 代理端）
-
-| 指令 | 权限 | 说明 |
-|------|------|------|
-| `/lsvc reload` | `loginsequence2vc.admin` | 重载配置文件 |
-| `/lsvc debug` | `loginsequence2vc.admin` | 切换调试模式 |
-| `/lsvc help` | `loginsequence2vc.admin` | 显示帮助信息 |
-
-**指令别名**: `/loginsequencevc`
-
-### LoginSequence2Limbo（Limbo 登录服）
+### LoginQueue2VC（Velocity 代理端）
 
 | 指令 | 权限 | 说明 |
 |------|------|------|
-| `/logseq skip [玩家名]` | `loginsequence.admin.skip` | 跳过排队，直接将玩家送入主服务器 |
-| `/logseq list` | `loginsequence.admin.list` | 显示当前排队玩家列表 |
-| `/logseq status` | `loginsequence.admin.status` | 显示主服务器状态 |
-| `/logseq refresh` | `loginsequence.admin.refresh` | 手动刷新主服务器状态缓存 |
-| `/logseq reload` | `loginsequence.admin.reload` | 重载配置文件和语言文件 |
-| `/logseq debug` | `loginsequence.admin.debug` | 切换调试模式 |
-| `/logseq info` | `loginsequence.admin.info` | 查看所有主服务器详细信息 |
+| `/lsvc reload` | `loginqueue2vc.admin` | 重载配置文件 |
+| `/lsvc debug` | `loginqueue2vc.admin` | 切换调试模式 |
+| `/lsvc help` | `loginqueue2vc.admin` | 显示帮助信息 |
+
+**指令别名**: `/loginqueuevc`
+
+### LoginQueue2Limbo（Limbo 登录服）
+
+| 指令 | 权限 | 说明 |
+|------|------|------|
+| `/logseq skip [玩家名]` | `loginqueue.admin.skip` | 跳过排队，直接将玩家送入主服务器 |
+| `/logseq list` | `loginqueue.admin.list` | 显示当前排队玩家列表 |
+| `/logseq status` | `loginqueue.admin.status` | 显示主服务器状态 |
+| `/logseq refresh` | `loginqueue.admin.refresh` | 手动刷新主服务器状态缓存 |
+| `/logseq reload` | `loginqueue.admin.reload` | 重载配置文件和语言文件 |
+| `/logseq debug` | `loginqueue.admin.debug` | 切换调试模式 |
+| `/logseq info` | `loginqueue.admin.info` | 查看所有主服务器详细信息 |
 | `/logseq help` | - | 显示帮助信息 |
 | `/join` | - | 手动加入排队队列 |
 
 **指令别名**: `/ls` 是 `/logseq` 的别名
 
-### LoginSequence2Online（子服务器）
+### LoginQueue2Online（子服务器）
 
 该插件无指令，启动后自动运行，通过 UDP 向登录服上报服务器状态信息。
 
 ## 权限节点
 
-### LoginSequence2
+### LoginQueue2
 
 | 权限 | 说明 |
 |------|------|
-| `loginsequence.admin.skip` | 允许使用 `/logseq skip` 跳过排队 |
-| `loginsequence.admin.list` | 允许查看排队列表 |
-| `loginsequence.admin.status` | 允许查看服务器状态 |
-| `loginsequence.admin.refresh` | 允许手动刷新服务器状态 |
-| `loginsequence.admin.reload` | 允许重载配置 |
-| `loginsequence.admin.debug` | 允许切换调试模式 |
-| `loginsequence.admin.info` | 允许查看服务器详细信息 |
-| `loginsequence.admin.bypass` | 不受登录服限制（移动、交互等） |
-| `loginsequence.vip` | VIP 排队优先级 |
-| `loginsequence.priority` | 优先排队权限 |
+| `loginqueue.admin.skip` | 允许使用 `/logseq skip` 跳过排队 |
+| `loginqueue.admin.list` | 允许查看排队列表 |
+| `loginqueue.admin.status` | 允许查看服务器状态 |
+| `loginqueue.admin.refresh` | 允许手动刷新服务器状态 |
+| `loginqueue.admin.reload` | 允许重载配置 |
+| `loginqueue.admin.debug` | 允许切换调试模式 |
+| `loginqueue.admin.info` | 允许查看服务器详细信息 |
+| `loginqueue.admin.bypass` | 不受登录服限制（移动、交互等） |
+| `loginqueue.vip` | VIP 排队优先级 |
+| `loginqueue.priority` | 优先排队权限 |
 
 ## 各插件功能详解
 
-### LoginSequence2（主插件）
+### LoginQueue2（主插件）
 
 **运行平台**: Spigot/Paper 1.13+
 **安装位置**: 登录服（Lobby）
@@ -337,7 +339,7 @@ refresh-interval: 5
 - `ROUND_ROBIN`: 轮询选择服务器
 - `RANDOM`: 随机选择服务器
 
-### LoginSequence2BC（BungeeCord 代理端插件）
+### LoginQueue2BC（BungeeCord 代理端插件）
 
 **运行平台**: BungeeCord
 **安装位置**: BungeeCord 代理端
@@ -350,7 +352,7 @@ refresh-interval: 5
 
 **适用场景**: 使用 BC 通道优先模式时需要安装
 
-### LoginSequence2VC（Velocity 代理端插件）
+### LoginQueue2VC（Velocity 代理端插件）
 
 **运行平台**: Velocity 3.x
 **安装位置**: Velocity 代理端
@@ -359,7 +361,7 @@ refresh-interval: 5
 
 **适用场景**: 使用 Velocity 代理且 BC 通道优先模式时需要安装
 
-### LoginSequence2Limbo（Limbo 登录服插件）
+### LoginQueue2Limbo（Limbo 登录服插件）
 
 **运行平台**: Limbo
 **安装位置**: Limbo 服务器
@@ -375,7 +377,7 @@ refresh-interval: 5
 
 **适用场景**: 使用 Limbo 作为轻量级登录服时需要安装
 
-### LoginSequence2Online（子服务器状态上报插件）
+### LoginQueue2Online（子服务器状态上报插件）
 
 **运行平台**: Spigot/Paper 1.14+
 **安装位置**: 各主服务器（Main）
@@ -390,16 +392,16 @@ refresh-interval: 5
 
 ## 消息通道
 
-| 通道 | 说明 | 使用场景 |
-|------|------|----------|
-| `BungeeCord` | BungeeCord 原生通道，用于直接转移玩家 | UDP 优先模式 |
-| `loginsequence:connectother` | 通知代理端将指定玩家转移到目标服务器 | BC 优先模式 |
-| `loginsequence:connectrequest` | 玩家主动请求连接到目标服务器 | BC 优先模式 |
-| `loginsequence:serverinfo` | 查询/上报服务器状态信息 | BC 优先模式 |
+| 通道                           | 说明 | 使用场景 |
+|------------------------------|------|----------|
+| `BungeeCord`                 | BungeeCord 原生通道，用于直接转移玩家 | UDP 优先模式 |
+| `loginqueue2:connectother`   | 通知代理端将指定玩家转移到目标服务器 | BC 优先模式 |
+| `loginqueue2:connectrequest` | 玩家主动请求连接到目标服务器 | BC 优先模式 |
+| `loginqueue2:serverinfo`     | 查询/上报服务器状态信息 | BC 优先模式 |
 
 ## 依赖
 
-- Java 8+（LoginSequence2VC 需要 Java 17）
+- Java 8+（LoginQueue2VC 需要 Java 17）
 - Maven 3.6+
 
 ## 许可证

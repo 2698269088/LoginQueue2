@@ -1,0 +1,24 @@
+# 当前子服务器在代理端中的名称
+server-name: "main"
+
+# 向代理端广播服务器信息的周期（秒）
+refresh-interval: 5
+
+# UDP 服务器信息同步配置
+udp-sync:
+  # 是否启用 UDP 服务器信息响应
+  enabled: false
+  # UDP 监听端口
+  port: 16647
+  # SHA256 通信密钥（留空则随机生成，请设置与主插件配置相同的密钥）
+  secret-key: ""
+  # 计划好的预共享密钥（用于加密传输通信密钥，防止窃听）
+  # 此密钥只能手动配置，不会通过网络传输，建议两端配置相同
+  # 建议修改为非预设密钥
+  planned-key: "loginqueue2"
+  
+  # 服务器列表（用于 /connect 指令 Tab 补全）
+  server-list:
+    - "lobby"
+    - "main"
+    - "minigames"
