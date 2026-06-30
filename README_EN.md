@@ -4,6 +4,7 @@
 
 LoginQueue2 is a Minecraft server login queue system supporting Spigot/Paper subservers, BungeeCord, Velocity proxies, and Limbo lightweight login servers. Built with Maven multi-module aggregation, it manages five companion plugins in a unified project.
 This plugin suite replaces the legacy LoginQueue plugin, having been completely refactored with significantly improved code quality and efficiency.
+Since version 1.3, a single LoginQueue2 plugin can handle over 95% of the functionality, allowing for a nearly perfect login queue without needing the Online/BC/VC plugins.
 
 > **LoginQueue2** is a next-generation Minecraft login queue solution, providing high-performance player queuing, load balancing, and cross-server transfer capabilities for network servers. Supports multiple platform combinations including Spigot/Paper, BungeeCord, Velocity, and Limbo to meet the deployment needs of various server scales.
 

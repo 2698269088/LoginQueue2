@@ -4,6 +4,7 @@
 
 LoginQueue2 是一个 Minecraft 服务器登录队列系统，支持 Spigot/Paper 子服务器、BungeeCord、Velocity 代理端和 Limbo 轻量级登录服。通过 Maven 多模块聚合构建，统一管理五个配套插件。
 本插件组是为了替代旧版的LoginQueue插件，经过彻底重构，代码质量和效率明显好过旧版。
+自1.3版本后，单个LoginQueue2插件即可完成95%以上的功能，无需Online/BC/VC插件即可实现接近完美的登录队列功能。
 
 > **LoginQueue2** 是新一代 Minecraft 登录队列解决方案，为群组服提供高性能的玩家排队、负载均衡和跨服转移功能。支持 Spigot/Paper、BungeeCord、Velocity 和 Limbo 多种平台组合，满足不同规模服务器的部署需求。
 
