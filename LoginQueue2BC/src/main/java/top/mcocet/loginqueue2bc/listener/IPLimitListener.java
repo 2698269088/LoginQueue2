@@ -47,8 +47,8 @@ public class IPLimitListener implements Listener {
         // 检查IP封禁
         if (databaseManager.isIpBanned(ip)) {
             event.setCancelled(true);
-            event.setCancelReason("§c你的IP已被封禁，请稍后再试。");
-            plugin.debug("阻止玩家 " + playerName + " 登录：IP " + ip + " 已被封禁");
+            event.setCancelReason(plugin.getLanguageManager().getMessage("ip-banned"));
+            plugin.debug(plugin.getLanguageManager().getLogMessage("ip-blocked", "player", playerName, "ip", ip));
             return;
         }
 
@@ -69,8 +69,8 @@ public class IPLimitListener implements Listener {
             }
             if (currentOnline >= maxOnlinePerIp) {
                 event.setCancelled(true);
-                event.setCancelReason("§c该IP已达到最大在线玩家限制 (" + maxOnlinePerIp + ")，请稍后再试。");
-                plugin.debug("阻止玩家 " + playerName + " 登录：IP " + ip + " 已达到最大在线限制 (" + currentOnline + "/" + maxOnlinePerIp + ")");
+                event.setCancelReason(plugin.getLanguageManager().getMessage("ip-max-online-reached", "max", String.valueOf(maxOnlinePerIp)));
+                plugin.debug(plugin.getLanguageManager().getLogMessage("ip-max-online-blocked", "player", playerName, "ip", ip, "current", String.valueOf(currentOnline), "max", String.valueOf(maxOnlinePerIp)));
                 return;
             }
         }
@@ -89,13 +89,13 @@ public class IPLimitListener implements Listener {
                 rs.close();
                 ps.close();
             } catch (java.sql.SQLException e) {
-                plugin.getLogger().warning("查询玩家注册状态失败: " + e.getMessage());
+                plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-query-failed", "error", e.getMessage()));
             }
 
             if (!alreadyRegistered && registeredCount >= maxRegisterPerIp) {
                 event.setCancelled(true);
-                event.setCancelReason("§c该IP已达到最大注册玩家限制 (" + maxRegisterPerIp + ")，无法注册新账号。");
-                plugin.debug("阻止玩家 " + playerName + " 注册：IP " + ip + " 已达到最大注册限制 (" + registeredCount + "/" + maxRegisterPerIp + ")");
+                event.setCancelReason(plugin.getLanguageManager().getMessage("ip-max-register-reached", "max", String.valueOf(maxRegisterPerIp)));
+                plugin.debug(plugin.getLanguageManager().getLogMessage("ip-max-register-blocked", "player", playerName, "ip", ip, "current", String.valueOf(registeredCount), "max", String.valueOf(maxRegisterPerIp)));
             }
         }
     }
@@ -110,7 +110,7 @@ public class IPLimitListener implements Listener {
 
         if (enableIpLimit) {
             databaseManager.recordPlayerLogin(player.getUniqueId(), player.getName(), ip);
-            plugin.debug("记录玩家 " + player.getName() + " 登录IP: " + ip);
+            plugin.debug(plugin.getLanguageManager().getLogMessage("ip-record-login", "player", player.getName(), "ip", ip));
         }
 
         if (!enableIpAuth) {
@@ -126,9 +126,9 @@ public class IPLimitListener implements Listener {
         if (lastIp != null && !lastIp.isEmpty() && !lastIp.equals(ip)) {
             // IP发生变化，需要认证
             pendingAuth.add(player.getUniqueId());
-            player.sendMessage("§c[IP安全] 你的登录IP已发生变化，请输入认证密钥以继续登录。");
-            player.sendMessage("§c[IP安全] 提示：直接在聊天栏输入密钥即可（不会被发送到服务器）");
-            plugin.debug("玩家 " + player.getName() + " IP变化，等待认证: " + lastIp + " -> " + ip);
+            player.sendMessage(plugin.getLanguageManager().getMessage("ip-auth-required"));
+            player.sendMessage(plugin.getLanguageManager().getMessage("ip-auth-hint"));
+            plugin.debug(plugin.getLanguageManager().getLogMessage("ip-auth-pending", "player", player.getName(), "oldIp", lastIp, "newIp", ip));
         }
     }
 
@@ -156,8 +156,8 @@ public class IPLimitListener implements Listener {
         if (input.equals(correctKey)) {
             pendingAuth.remove(uuid);
             databaseManager.clearAuthFailures(ip);
-            player.sendMessage("§a[IP安全] 认证成功，欢迎回来！");
-            plugin.debug("玩家 " + player.getName() + " 认证成功");
+            player.sendMessage(plugin.getLanguageManager().getMessage("ip-auth-success"));
+            plugin.debug(plugin.getLanguageManager().getLogMessage("ip-auth-success", "player", player.getName()));
         } else {
             databaseManager.incrementAuthFailure(ip);
             int failures = databaseManager.getAuthFailureCount(ip);
@@ -167,11 +167,11 @@ public class IPLimitListener implements Listener {
             if (remaining <= 0) {
                 databaseManager.banIp(ip, "认证密钥错误次数过多");
                 pendingAuth.remove(uuid);
-                player.disconnect("§c你的IP已被封禁，原因：认证密钥错误次数过多。");
-                plugin.debug("玩家 " + player.getName() + " IP " + ip + " 因认证失败次数过多被封禁");
+                player.disconnect(plugin.getLanguageManager().getMessage("ip-auth-banned"));
+                plugin.debug(plugin.getLanguageManager().getLogMessage("ip-auth-banned", "player", player.getName(), "ip", ip));
             } else {
-                player.sendMessage("§c[IP安全] 认证密钥错误，还剩 " + remaining + " 次机会。");
-                plugin.debug("玩家 " + player.getName() + " 认证失败，剩余次数: " + remaining);
+                player.sendMessage(plugin.getLanguageManager().getMessage("ip-auth-fail", "remaining", String.valueOf(remaining)));
+                plugin.debug(plugin.getLanguageManager().getLogMessage("ip-auth-fail", "player", player.getName(), "remaining", String.valueOf(remaining)));
             }
         }
     }

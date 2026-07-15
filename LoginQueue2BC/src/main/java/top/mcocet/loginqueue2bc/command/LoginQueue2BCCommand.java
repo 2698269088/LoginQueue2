@@ -24,12 +24,12 @@ public class LoginQueue2BCCommand extends Command {
         switch (sub) {
             case "reload":
                 plugin.reloadConfig();
-                sender.sendMessage("§aLoginQueue2BC 配置文件已重载。");
+                sender.sendMessage(plugin.getLanguageManager().getMessage("config-reloaded"));
                 break;
             case "debug":
                 boolean newState = !plugin.isDebug();
                 plugin.setDebug(newState);
-                sender.sendMessage(newState ? "§a调试模式已开启。" : "§c调试模式已关闭。");
+                sender.sendMessage(plugin.getLanguageManager().getMessage(newState ? "debug-mode-on" : "debug-mode-off"));
                 break;
             case "unban":
                 if (args.length < 2) {
@@ -37,22 +37,22 @@ public class LoginQueue2BCCommand extends Command {
                     return;
                 }
                 plugin.getDatabaseManager().unbanIp(args[1]);
-                sender.sendMessage("§a已解封IP: " + args[1]);
+                sender.sendMessage(plugin.getLanguageManager().getMessage("ip-unbanned", "ip", args[1]));
                 break;
             case "help":
                 sendHelp(sender);
                 break;
             default:
-                sender.sendMessage("§c未知子命令，使用 /lqbc help 查看帮助。");
+                sender.sendMessage(plugin.getLanguageManager().getMessage("unknown-subcommand"));
         }
     }
 
     private void sendHelp(CommandSender sender) {
-        sender.sendMessage("§a========== LoginQueue2BC 帮助 ==========");
-        sender.sendMessage("§e/lqbc reload&f - 重载配置文件");
-        sender.sendMessage("§e/lqbc debug&f - 切换调试模式");
-        sender.sendMessage("§e/lqbc unban <IP>&f - 解封指定IP");
-        sender.sendMessage("§e/lqbc help&f - 显示此帮助");
-        sender.sendMessage("§a==========================================");
+        sender.sendMessage(plugin.getLanguageManager().getMessage("help-header"));
+        sender.sendMessage(plugin.getLanguageManager().getMessage("help-reload"));
+        sender.sendMessage(plugin.getLanguageManager().getMessage("help-debug"));
+        sender.sendMessage(plugin.getLanguageManager().getMessage("help-unban"));
+        sender.sendMessage(plugin.getLanguageManager().getMessage("help-help"));
+        sender.sendMessage(plugin.getLanguageManager().getMessage("help-footer"));
     }
 }

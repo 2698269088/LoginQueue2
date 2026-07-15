@@ -73,7 +73,7 @@ public class DatabaseManager {
             try {
                 connection.close();
             } catch (SQLException e) {
-                plugin.getLogger().warning("关闭数据库连接失败: " + e.getMessage());
+                plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-close-failed", "error", e.getMessage()));
             }
         }
     }
@@ -121,7 +121,7 @@ public class DatabaseManager {
                 }
             }
         } catch (SQLException e) {
-            plugin.getLogger().warning("记录玩家登录IP失败: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-record-login-failed", "error", e.getMessage()));
         }
     }
 
@@ -134,7 +134,7 @@ public class DatabaseManager {
             ps.setLong(4, System.currentTimeMillis());
             ps.executeUpdate();
         } catch (SQLException e) {
-            plugin.getLogger().warning("记录IP变化历史失败: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-record-ip-change-failed", "error", e.getMessage()));
         }
     }
 
@@ -147,7 +147,7 @@ public class DatabaseManager {
                 return rs.getString("last_login_ip");
             }
         } catch (SQLException e) {
-            plugin.getLogger().warning("查询玩家上次登录IP失败: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-query-last-ip-failed", "error", e.getMessage()));
         }
         return null;
     }
@@ -175,7 +175,7 @@ public class DatabaseManager {
                 }
             }
         } catch (SQLException e) {
-            plugin.getLogger().warning("查询IP封禁状态失败: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-query-ban-failed", "error", e.getMessage()));
         }
         return false;
     }
@@ -188,7 +188,7 @@ public class DatabaseManager {
             ps.setString(3, reason);
             ps.executeUpdate();
         } catch (SQLException e) {
-            plugin.getLogger().warning("封禁IP失败: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-ban-failed", "error", e.getMessage()));
         }
     }
 
@@ -198,7 +198,7 @@ public class DatabaseManager {
             ps.setString(1, ip);
             ps.executeUpdate();
         } catch (SQLException e) {
-            plugin.getLogger().warning("解封IP失败: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-unban-failed", "error", e.getMessage()));
         }
     }
 
@@ -222,7 +222,7 @@ public class DatabaseManager {
                 return rs.getInt("failure_count");
             }
         } catch (SQLException e) {
-            plugin.getLogger().warning("查询认证失败次数失败: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-query-auth-failures-failed", "error", e.getMessage()));
         }
         return 0;
     }
@@ -236,7 +236,7 @@ public class DatabaseManager {
             ps.setLong(3, System.currentTimeMillis());
             ps.executeUpdate();
         } catch (SQLException e) {
-            plugin.getLogger().warning("增加认证失败次数失败: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-increment-auth-failed", "error", e.getMessage()));
         }
     }
 
@@ -246,7 +246,7 @@ public class DatabaseManager {
             ps.setString(1, ip);
             ps.executeUpdate();
         } catch (SQLException e) {
-            plugin.getLogger().warning("清除认证失败次数失败: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-clear-auth-failed", "error", e.getMessage()));
         }
     }
 
@@ -262,7 +262,7 @@ public class DatabaseManager {
                 return rs.getInt(1);
             }
         } catch (SQLException e) {
-            plugin.getLogger().warning("查询IP注册玩家数失败: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("db-query-registered-count-failed", "error", e.getMessage()));
         }
         return 0;
     }

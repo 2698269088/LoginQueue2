@@ -54,6 +54,10 @@ public class ServerInfoListener implements PluginMessageListener {
         int online = plugin.getServer().getOnlinePlayers().size();
         int max = plugin.getServer().getMaxPlayers();
         boolean onlineStatus = true;
+        double tps = getTPS();
+        long usedMemory = getUsedMemory();
+        long maxMemory = getMaxMemory();
+        String protocolVersion = LoginQueue2Online.PROTOCOL_VERSION;
 
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF("RESP");
@@ -61,8 +65,31 @@ public class ServerInfoListener implements PluginMessageListener {
         out.writeInt(online);
         out.writeInt(max);
         out.writeBoolean(onlineStatus);
+        out.writeDouble(tps);
+        out.writeLong(usedMemory);
+        out.writeLong(maxMemory);
+        out.writeUTF(protocolVersion);
 
         player.sendPluginMessage(plugin, LoginQueue2Online.CHANNEL_SERVER_INFO, out.toByteArray());
+    }
+
+    private double getTPS() {
+        try {
+            Object minecraftServer = Bukkit.getServer().getClass().getMethod("getHandle").invoke(Bukkit.getServer());
+            double[] recentTps = (double[]) minecraftServer.getClass().getField("recentTps").get(minecraftServer);
+            return recentTps[0];
+        } catch (Exception e) {
+            return 20.0;
+        }
+    }
+
+    private long getUsedMemory() {
+        Runtime runtime = Runtime.getRuntime();
+        return (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024;
+    }
+
+    private long getMaxMemory() {
+        return Runtime.getRuntime().maxMemory() / 1024 / 1024;
     }
 
     private void startRefreshTask() {
@@ -115,6 +142,10 @@ public class ServerInfoListener implements PluginMessageListener {
         String serverName = plugin.getConfig().getString("server-name", Bukkit.getServer().getName());
         int online = plugin.getServer().getOnlinePlayers().size();
         int max = plugin.getServer().getMaxPlayers();
+        double tps = getTPS();
+        long usedMemory = getUsedMemory();
+        long maxMemory = getMaxMemory();
+        String protocolVersion = LoginQueue2Online.PROTOCOL_VERSION;
 
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF("RESP");
@@ -122,6 +153,10 @@ public class ServerInfoListener implements PluginMessageListener {
         out.writeInt(online);
         out.writeInt(max);
         out.writeBoolean(true);
+        out.writeDouble(tps);
+        out.writeLong(usedMemory);
+        out.writeLong(maxMemory);
+        out.writeUTF(protocolVersion);
 
         byte[] data = out.toByteArray();
         for (Player player : plugin.getServer().getOnlinePlayers()) {

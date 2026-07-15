@@ -10,6 +10,7 @@ import top.mcocet.loginqueue2bc.database.DatabaseManager;
 import top.mcocet.loginqueue2bc.listener.IPLimitListener;
 import top.mcocet.loginqueue2bc.listener.PluginMessageListener;
 import top.mcocet.loginqueue2bc.listener.ServerCommandListener;
+import top.mcocet.loginqueue2bc.util.LanguageManager;
 
 import java.io.File;
 import java.io.IOException;
@@ -17,6 +18,9 @@ import java.io.InputStream;
 import java.nio.file.Files;
 
 public final class LoginQueue2BC extends Plugin {
+
+    /** 协议版本号：用于跨插件通信版本兼容性检查 */
+    public static final String PROTOCOL_VERSION = "1.4";
 
     public static final String CHANNEL_CONNECT_OTHER = "loginqueue2:connectother";
     public static final String CHANNEL_CONNECT_REQUEST = "loginqueue2:connectrequest";
@@ -29,18 +33,22 @@ public final class LoginQueue2BC extends Plugin {
     private ServerCommandListener serverCommandListener;
     private DatabaseManager databaseManager;
     private IPLimitListener ipLimitListener;
+    private LanguageManager languageManager;
 
     @Override
     public void onEnable() {
         loadConfig();
 
+        // 初始化语言管理器
+        this.languageManager = new LanguageManager(this);
+
         // 初始化SQLite数据库
         databaseManager = new DatabaseManager(this);
         try {
             databaseManager.init();
-            getLogger().info("SQLite数据库已初始化。");
+            getLogger().info(languageManager.getLogMessage("db-initialized"));
         } catch (Exception e) {
-            getLogger().warning("SQLite数据库初始化失败: " + e.getMessage());
+            getLogger().warning(languageManager.getLogMessage("db-init-failed", "error", e.getMessage()));
         }
 
         // 注册自定义插件消息通道（必须注册才能接收子服务器发来的消息）
@@ -55,7 +63,7 @@ public final class LoginQueue2BC extends Plugin {
         pluginManager.registerListener(this, ipLimitListener = new IPLimitListener(this, databaseManager));
         pluginManager.registerCommand(this, new LoginQueue2BCCommand(this));
 
-        getLogger().info("LoginQueue2BC 已启用。");
+        getLogger().info(languageManager.getLogMessage("plugin-enabled"));
     }
 
     @Override
@@ -78,7 +86,7 @@ public final class LoginQueue2BC extends Plugin {
             databaseManager.close();
         }
 
-        getLogger().info("LoginQueue2BC 已禁用。");
+        getLogger().info(languageManager.getLogMessage("plugin-disabled"));
     }
 
     public void loadConfig() {
@@ -90,13 +98,13 @@ public final class LoginQueue2BC extends Plugin {
             try (InputStream in = getResourceAsStream("config.yml")) {
                 Files.copy(in, configFile.toPath());
             } catch (IOException e) {
-                getLogger().warning("无法保存默认配置文件: " + e.getMessage());
+                getLogger().warning(languageManager.getLogMessage("config-save-failed", "error", e.getMessage()));
             }
         }
         try {
             config = ConfigurationProvider.getProvider(YamlConfiguration.class).load(configFile);
         } catch (IOException e) {
-            getLogger().warning("无法加载配置文件: " + e.getMessage());
+            getLogger().warning(languageManager.getLogMessage("config-load-failed", "error", e.getMessage()));
             config = new Configuration();
         }
         debug = config.getBoolean("debug", false);
@@ -107,12 +115,15 @@ public final class LoginQueue2BC extends Plugin {
         try {
             ConfigurationProvider.getProvider(YamlConfiguration.class).save(config, configFile);
         } catch (IOException e) {
-            getLogger().warning("无法保存配置文件: " + e.getMessage());
+            getLogger().warning(languageManager.getLogMessage("config-save-error", "error", e.getMessage()));
         }
     }
 
     public void reloadConfig() {
         loadConfig();
+        if (languageManager != null) {
+            languageManager.reload();
+        }
     }
 
     public DatabaseManager getDatabaseManager() {
@@ -131,6 +142,10 @@ public final class LoginQueue2BC extends Plugin {
         this.debug = debug;
         config.set("debug", debug);
         saveConfig();
+    }
+
+    public LanguageManager getLanguageManager() {
+        return languageManager;
     }
 
     public void debug(String message) {

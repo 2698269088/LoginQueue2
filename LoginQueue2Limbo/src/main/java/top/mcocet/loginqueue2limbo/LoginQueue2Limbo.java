@@ -19,6 +19,7 @@ import top.mcocet.loginqueue2limbo.listener.PlayerRestrictionListener;
 import top.mcocet.loginqueue2limbo.listener.PluginMessageListener;
 import top.mcocet.loginqueue2limbo.listener.QueueItemListener;
 import top.mcocet.loginqueue2limbo.util.LanguageManager;
+import top.mcocet.loginqueue2limbo.scoreboard.ServerScoreboardManager;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -34,6 +35,7 @@ public class LoginQueue2Limbo extends LimboPlugin {
     private LanguageManager languageManager;
     private AuthManager authManager;
     private AuthRestrictionListener authRestrictionListener;
+    private ServerScoreboardManager scoreboardManager;
     private FileConfiguration config;
     private boolean debug;
 
@@ -47,7 +49,7 @@ public class LoginQueue2Limbo extends LimboPlugin {
 
         boolean enableBungeeExtension = getConfig().get("enable-bungee-extension", Boolean.class) != null ? getConfig().get("enable-bungee-extension", Boolean.class) : true;
         this.messenger = new BungeeMessenger(this, enableBungeeExtension);
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] BungeeCord 通道扩展: " + (enableBungeeExtension ? "已启用" : "已禁用") + "。");
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("bungee-extension-status", "status", languageManager.getLogMessage(enableBungeeExtension ? "enabled" : "disabled")));
 
         this.authManager = new AuthManager(this);
         this.authRestrictionListener = new AuthRestrictionListener(this, authManager);
@@ -63,6 +65,8 @@ public class LoginQueue2Limbo extends LimboPlugin {
         Limbo.getInstance().getEventsManager().registerEvents(this, new QueueItemListener(this, playerJoinListener));
 
         Limbo.getInstance().getEventsManager().registerEvents(this, new PluginMessageListener(messenger));
+
+        this.scoreboardManager = new ServerScoreboardManager(this, messenger);
 
         sayLog();
 
@@ -80,11 +84,11 @@ public class LoginQueue2Limbo extends LimboPlugin {
         logStartupConfig();
 
         if (authManager.isEnabled()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 认证系统已启用。");
+            Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("auth-enabled"));
         } else {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 认证系统已禁用。");
+            Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("auth-disabled"));
         }
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] LoginQueue2Limbo 已启用，登录队列系统已加载。");
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("plugin-enabled"));
     }
 
     private void startRefreshTask() {
@@ -115,17 +119,13 @@ public class LoginQueue2Limbo extends LimboPlugin {
     }
 
     private void logStartupConfig() {
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 主服务器: " + getConfigValueString("queue.main-server", "main"));
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 最大在线: " + getConfigValueInt("queue.max-online", 50));
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 连接阈值: " + getConfigValueDouble("queue.threshold", 0.8));
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 限制移动: " + getConfigValueBoolean("queue.restrict-movement", true));
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 登录点保护: " + getConfigValueBoolean("queue.spawn-protection", true)
-                + " (半径: " + getConfigValueDouble("queue.spawn-protection-radius", 0.0) + " 方块)");
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 出生点世界: " + getConfigValueString("queue.spawn.world", "world")
-                + " (" + getConfigValueDouble("queue.spawn.x", 0.0)
-                + ", " + getConfigValueDouble("queue.spawn.y", 64.0)
-                + ", " + getConfigValueDouble("queue.spawn.z", 0.0) + ")");
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] BungeeCord 通道扩展: " + getConfigValueBoolean("enable-bungee-extension", true));
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("config-main-server", "server", getConfigValueString("queue.main-server", "main")));
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("config-max-online", "max", String.valueOf(getConfigValueInt("queue.max-online", 50))));
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("config-threshold", "threshold", String.valueOf(getConfigValueDouble("queue.threshold", 0.8))));
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("config-restrict-movement", "enabled", String.valueOf(getConfigValueBoolean("queue.restrict-movement", true))));
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("config-spawn-protection", "enabled", String.valueOf(getConfigValueBoolean("queue.spawn-protection", true)), "radius", String.valueOf(getConfigValueDouble("queue.spawn-protection-radius", 0.0))));
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("config-spawn-world", "world", getConfigValueString("queue.spawn.world", "world"), "x", String.valueOf(getConfigValueDouble("queue.spawn.x", 0.0)), "y", String.valueOf(getConfigValueDouble("queue.spawn.y", 64.0)), "z", String.valueOf(getConfigValueDouble("queue.spawn.z", 0.0))));
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("config-bungee-extension", "enabled", String.valueOf(getConfigValueBoolean("enable-bungee-extension", true))));
         logServerStatus();
     }
 
@@ -137,18 +137,21 @@ public class LoginQueue2Limbo extends LimboPlugin {
         if (all.isEmpty()) {
             return;
         }
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 当前已缓存子服务器状态:");
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("cached-server-status"));
         for (BungeeMessenger.ServerStatus status : all.values()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo]   " + status);
+            Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("plugin-prefix") + " " + status);
         }
     }
 
     @Override
     public void onDisable() {
+        if (scoreboardManager != null) {
+            scoreboardManager.shutdown();
+        }
         if (messenger != null) {
             messenger.shutdown();
         }
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] LoginQueue2Limbo 已禁用。");
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("plugin-disabled"));
     }
 
     public BungeeMessenger getMessenger() {
@@ -161,6 +164,10 @@ public class LoginQueue2Limbo extends LimboPlugin {
 
     public AuthRestrictionListener getAuthRestrictionListener() {
         return authRestrictionListener;
+    }
+
+    public ServerScoreboardManager getScoreboardManager() {
+        return scoreboardManager;
     }
 
     public LanguageManager getLanguageManager() {

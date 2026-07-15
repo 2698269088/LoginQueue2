@@ -39,7 +39,7 @@ public class QueueItemListener implements Listener {
         Material parsed = Material.getMaterial(matName);
         this.material = parsed != null ? parsed : Material.BEACON;
         this.itemName = ChatColor.translateAlternateColorCodes('&',
-                plugin.getConfig().getString("queue-item.name", "&a加入游戏"));
+                plugin.getConfig().getString("queue-item.name", languageManager.getMessage("queue-item-name")));
     }
 
     @EventHandler(priority = EventPriority.HIGH)

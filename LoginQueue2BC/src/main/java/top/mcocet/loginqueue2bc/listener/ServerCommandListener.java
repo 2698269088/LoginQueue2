@@ -36,8 +36,8 @@ public class ServerCommandListener implements Listener {
         // 检查是否在登录服中（独立功能）
         if (isInLoginServer(player)) {
             event.setCancelled(true);
-            player.sendMessage("§c你当前在登录服，无法使用 /server 命令切换服务器。");
-            plugin.debug("阻止玩家 " + player.getName() + " 使用 /server 命令（在登录服中）");
+            player.sendMessage(plugin.getLanguageManager().getMessage("server-command-login-server"));
+            plugin.debug(plugin.getLanguageManager().getLogMessage("server-command-blocked-login", "player", player.getName()));
             return;
         }
 
@@ -45,8 +45,8 @@ public class ServerCommandListener implements Listener {
         if (plugin.getConfig().getBoolean("restrict-server-command", false)) {
             if (!messageListener.isPlayerLoggedIn(player.getUniqueId())) {
                 event.setCancelled(true);
-                player.sendMessage("§c请先登录后再使用 /server 命令切换服务器。");
-                plugin.debug("阻止玩家 " + player.getName() + " 使用 /server 命令（未登录）");
+                player.sendMessage(plugin.getLanguageManager().getMessage("server-command-not-logged-in"));
+                plugin.debug(plugin.getLanguageManager().getLogMessage("server-command-blocked-not-logged", "player", player.getName()));
             }
         }
     }

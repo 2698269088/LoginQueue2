@@ -1,39 +1,53 @@
 # LoginQueue2
 
-### Tip: The plugin group has been renamed from LoginSequence2 to LoginQueue2.
+### Note: The plugin was originally named LoginSequence2, but it has now been renamed to LoginQueue2.
 
-LoginQueue2 is a Minecraft server login queue system supporting Spigot/Paper subservers, BungeeCord, Velocity proxies, and Limbo lightweight login servers. Built with Maven multi-module aggregation, it manages five companion plugins in a unified project.
-This plugin suite replaces the legacy LoginQueue plugin, having been completely refactored with significantly improved code quality and efficiency.
-Since version 1.3, a single LoginQueue2 plugin can handle over 95% of the functionality, allowing for a nearly perfect login queue without needing the Online/BC/VC plugins.
+> **A next-generation Minecraft login queue solution**, providing high-performance player queuing, load balancing, and cross-server transfer capabilities for network servers. Supports multiple platform combinations including Spigot/Paper, BungeeCord, Velocity, and Limbo to meet the deployment needs of various server scales.
 
-> **LoginQueue2** is a next-generation Minecraft login queue solution, providing high-performance player queuing, load balancing, and cross-server transfer capabilities for network servers. Supports multiple platform combinations including Spigot/Paper, BungeeCord, Velocity, and Limbo to meet the deployment needs of various server scales.
+---
+
+## Important Notice
+
+### One Plugin Handles Almost Everything
+
+Since **version 1.3**, **a single `LoginQueue2` / `LoginQueue2Limbo` main plugin can handle 99% of the functionality**, allowing for a nearly perfect login queue experience without needing the Online/BC/VC companion plugins.
+
+- **Single Server Mode**: Just install the `LoginQueue2` main plugin on your login server (Lobby). That's it.
+- **Network Mode (UDP Priority - Recommended)**: Install `LoginQueue2` on the login server and `LoginQueue2Online` on each main server for status reporting. No BC/VC proxy plugins required.
+- **The Only Exception**: Remote main server **TPS (ticks per second)** cannot be obtained by a single server alone. It requires the `LoginQueue2Online` plugin (via UDP) or a proxy plugin (BC/VC) to provide complete server load data. If you don't need precise TPS monitoring, the main plugin alone is fully sufficient.
+
+> **Note**: Unless new features are required, the BC/VC and Online companion plugins typically do not need to be updated. These plugins are functionally stable and only need to remain compatible with the main plugin version.
+
+---
 
 ## Project Structure
 
 ```
-LoginQueue/
+LoginQueue2/
 ├── pom.xml                          # Root aggregator POM
-├── LoginQueue2/                  # Main plugin (Spigot/Paper)
+├── LoginQueue2/                     # Main plugin (Spigot/Paper)
 │   └── src/main/java/top/mcocet/loginqueue2/
-├── LoginQueue2BC/                # BungeeCord proxy companion plugin
-│   └── src/main/java/top/mcocet/loginqueue2bc/
-├── LoginQueue2Online/            # Subserver status reporting plugin
+├── LoginQueue2Limbo/                # Limbo lightweight login server companion
+│   └── src/main/java/top/mcocet/loginqueue2limbo/
+├── LoginQueue2Online/               # Subserver status reporting plugin (UDP)
 │   └── src/main/java/top/mcocet/loginqueue2online/
-├── LoginQueue2VC/                # Velocity proxy companion plugin
-│   └── src/main/java/top/mcocet/loginqueue2vc/
-└── LoginQueue2Limbo/             # Limbo login server companion plugin
-    └── src/main/java/top/mcocet/loginqueue2limbo/
+├── LoginQueue2BC/                   # BungeeCord proxy companion (optional)
+│   └── src/main/java/top/mcocet/loginqueue2bc/
+└── LoginQueue2VC/                   # Velocity proxy companion (optional)
+    └── src/main/java/top/mcocet/loginqueue2vc/
 ```
 
 ## Module Overview
 
-| Module | Platform | Purpose |
-|--------|----------|---------|
-| LoginQueue2 | Spigot/Paper 1.13+ | Main plugin providing login queue, player restrictions, commands, and more |
-| LoginQueue2BC | BungeeCord | Proxy plugin handling cross-server transfers and server info queries |
-| LoginQueue2Online | Spigot/Paper 1.14+ | Subserver plugin reporting online status to the main server |
-| LoginQueue2VC | Velocity 3.x | Velocity proxy plugin with same functionality as LS2BC |
-| LoginQueue2Limbo | Limbo | Lightweight login server plugin providing queue and status sync |
+| Module | Platform | Purpose | Required? |
+|--------|----------|---------|-----------|
+| **LoginQueue2** | Spigot/Paper 1.13+ | Main plugin providing login queue, player restrictions, commands, load balancing, and all core features | **Yes** |
+| **LoginQueue2Limbo** | Limbo | Lightweight login server plugin with identical features to the main plugin, adapted for Limbo | As needed |
+| **LoginQueue2Online** | Spigot/Paper 1.14+ | Subserver plugin reporting online status and TPS via UDP | Recommended (for multi-main) |
+| **LoginQueue2BC** | BungeeCord | Proxy plugin handling cross-server transfers and server info queries (BC channel mode) | Optional |
+| **LoginQueue2VC** | Velocity 3.x | Velocity proxy plugin with same functionality as LS2BC | Optional |
+
+---
 
 ## Build
 
@@ -45,34 +59,30 @@ After building, all JAR files are automatically copied to the `dist/` folder at 
 
 ```
 dist/
-├── LoginQueue2-1.0.1.jar
-├── LoginQueue2BC-1.0.1.jar
-├── LoginQueue2Online-1.0.1.jar
-├── LoginQueue2VC-1.0.1.jar
-└── LoginQueue2Limbo-1.0.1.jar
+├── LoginQueue2-1.3.jar
+├── LoginQueue2BC-1.3.jar
+├── LoginQueue2Online-1.3.jar
+├── LoginQueue2VC-1.3.jar
+└── LoginQueue2Limbo-1.3.jar
 ```
 
-## Installation
+---
 
-### Basic Installation (Single Server)
+## Installation Guide
 
-Place `LoginQueue2-1.0.1.jar` into the `plugins/` folder of your login server (Lobby).
+### Single Server Mode (Simplest)
 
-### Basic Installation (Limbo Login Server)
+Only **1 plugin** needed:
 
-Place `LoginQueue2Limbo-1.0.1.jar` into the `plugins/` folder of your Limbo server.
+1. Place `LoginQueue2-1.3.jar` into the `plugins/` folder of your login server (Lobby).
+2. Done. No other plugins required — queue, restrictions, and transfers all work out of the box.
 
-**Limbo Mode Features**:
-- Uses Limbo as a lightweight login server with minimal resource usage
-- Supports UDP status sync and BungeeCord/Velocity native channels
-- Unified beacon click and `/join` command logic
+### Network Mode (UDP Priority - Recommended)
 
-### Network Installation (BungeeCord + UDP Priority Mode - Recommended)
+Only **2 plugins** needed, **no BC/VC proxy plugins required**:
 
-**No BC plugin required** — uses UDP for direct status sync and BungeeCord native channels for player transfers.
-
-1. **Login Server (Lobby)**: Place `LoginQueue2-1.0.1.jar` (Spigot/Paper) or `LoginQueue2Limbo-1.0.1.jar` (Limbo)
-2. **Main Servers (Main1, Main2...)**: Place `LoginQueue2Online-1.0.1.jar`
+1. **Login Server (Lobby)**: Place `LoginQueue2-1.3.jar` (Spigot/Paper) or `LoginQueue2Limbo-1.3.jar` (Limbo)
+2. **Main Servers (Main1, Main2...)**: Place `LoginQueue2Online-1.3.jar`
 
 Configure `config.yml`:
 ```yaml
@@ -91,13 +101,32 @@ udp-sync:
       secret-key: ""
 ```
 
-### Network Installation (BungeeCord + BC Priority Mode)
+> **Why UDP priority?** UDP allows direct communication between the main plugin and each subserver, completely bypassing the proxy. This is simpler to deploy and offers better performance. The only extra requirement is installing `LoginQueue2Online` on each main server to report TPS and other status data.
 
-**BC plugin required** — uses BungeeCord custom plugin messaging channels.
+### Network Mode (BungeeCord Native Channel - Optional)
 
-1. **Login Server (Lobby)**: Place `LoginQueue2-1.0.1.jar` (Spigot/Paper) or `LoginQueue2Limbo-1.0.1.jar` (Limbo)
-2. **BungeeCord Proxy**: Place `LoginQueue2BC-1.0.1.jar`
-3. **Main Servers (Main)**: Place `LoginQueue2Online-1.0.1.jar`
+If you prefer not to use UDP, you can use BungeeCord native channels for player transfers. You still only need:
+
+1. **Login Server (Lobby)**: `LoginQueue2-1.3.jar` or `LoginQueue2Limbo-1.3.jar`
+2. **Main Servers (Main)**: `LoginQueue2Online-1.3.jar` (for TPS reporting)
+
+Configure `config.yml`:
+```yaml
+enable-bungee-extension: true
+udp-sync:
+  enabled: true
+  priority: BC_CHANNEL
+```
+
+> Note: When using `BC_CHANNEL` priority, you only need `LoginQueue2BC` or `LoginQueue2VC` if you require proxy-side custom channel transfers. If you only use the native BungeeCord `Connect` channel, you still don't need a proxy plugin.
+
+### Network Mode (Full BC/VC Channel Mode - Optional)
+
+If you need additional features provided by the proxy plugins (such as IP limits, database logging, etc.):
+
+1. **Login Server (Lobby)**: `LoginQueue2-1.3.jar` or `LoginQueue2Limbo-1.3.jar`
+2. **BungeeCord/Velocity Proxy**: `LoginQueue2BC-1.3.jar` or `LoginQueue2VC-1.3.jar`
+3. **Main Servers (Main)**: `LoginQueue2Online-1.3.jar`
 
 Configure `config.yml`:
 ```yaml
@@ -107,31 +136,29 @@ udp-sync:
   priority: BC_CHANNEL
 ```
 
-### Network Installation (Velocity + BC Priority Mode)
+### Limbo Lightweight Login Server Mode
 
-1. **Login Server (Lobby)**: Place `LoginQueue2-1.0.1.jar` (Spigot/Paper) or `LoginQueue2Limbo-1.0.1.jar` (Limbo)
-2. **Velocity Proxy**: Place `LoginQueue2VC-1.0.1.jar`
-3. **Main Servers (Main)**: Place `LoginQueue2Online-1.0.1.jar`
+Place `LoginQueue2Limbo-1.3.jar` into the `plugins/` folder of your Limbo server.
 
-Configure `config.yml`:
-```yaml
-enable-bungee-extension: true
-udp-sync:
-  enabled: true
-  priority: BC_CHANNEL
-```
+**Limbo Mode Features**:
+- Uses Limbo as a lightweight login server with minimal resource usage
+- Supports UDP status sync and BungeeCord/Velocity native channels
+- Unified beacon click and `/join` command logic
+- Identical feature set to the main plugin, adapted for the Limbo API
+
+---
 
 ## Configuration
 
 ### LoginQueue2 Main Plugin
 
-Edit `plugins/LoginQueue/config.yml`:
+Edit `plugins/LoginQueue2/config.yml`:
 
 ```yaml
 # Plugin language (supports zh_CN, zh_TW, en_US)
 language: en_US
 
-# Enable BungeeCord channel extension (requires proxy plugin companion)
+# Enable BungeeCord channel extension (for cross-server transfers)
 enable-bungee-extension: true
 
 # Enable debug logging (outputs detailed plugin runtime information)
@@ -242,6 +269,8 @@ server-name: "main"
 refresh-interval: 5
 ```
 
+---
+
 ## Commands
 
 ### LoginQueue2 Main Plugin (Login Server)
@@ -280,9 +309,15 @@ refresh-interval: 5
 
 **Command alias**: `/loginqueuevc`
 
+### LoginQueue2Limbo (Limbo Login Server)
+
+Commands are identical to the main plugin. Supports `/logseq` and `/ls` aliases.
+
 ### LoginQueue2Online (Subserver)
 
 This plugin has no commands. It runs automatically after startup and reports server status to the login server via UDP.
+
+---
 
 ## Permissions
 
@@ -301,12 +336,15 @@ This plugin has no commands. It runs automatically after startup and reports ser
 | `loginqueue.vip` | VIP queue priority |
 | `loginqueue.priority` | Priority queue permission |
 
+---
+
 ## Detailed Plugin Features
 
 ### LoginQueue2 (Main Plugin)
 
 **Platform**: Spigot/Paper 1.13+
 **Install Location**: Login Server (Lobby)
+**Required**: **Yes**
 
 **Core Features**:
 - **Login Queue Management**: Controls player entry order into main servers with priority sorting
@@ -317,6 +355,7 @@ This plugin has no commands. It runs automatically after startup and reports ser
 - **Performance-Saving Mode**: Disables mob spawning, time flow, and weather changes
 - **UDP Status Sync**: Retrieves subserver status directly via UDP without requiring a proxy plugin
 - **Dual-Mode Support**: Supports both BungeeCord native channels and custom channels for player transfers
+- **Authentication System**: Built-in optional register/login/password change functionality
 
 **Load Balancing Strategies**:
 - `LEAST_PLAYERS`: Select server with fewest online players
@@ -324,54 +363,75 @@ This plugin has no commands. It runs automatically after startup and reports ser
 - `ROUND_ROBIN`: Rotate through servers in order
 - `RANDOM`: Randomly select a server
 
+### LoginQueue2Limbo (Limbo Login Server Plugin)
+
+**Platform**: Limbo
+**Install Location**: Limbo Server
+**Required**: Required when using Limbo as the login server
+
+**Core Features**: Identical to the main plugin, including queue management, load balancing, player restrictions, UDP sync, BungeeCord/Velocity compatibility, beacon queuing, etc. Adapted for the Limbo platform API.
+
+### LoginQueue2Online (Subserver Status Reporting Plugin)
+
+**Platform**: Spigot/Paper 1.14+
+**Install Location**: Each Main Server
+**Required**: Recommended in multi-main server environments for accurate TPS and online status
+
+**Core Features**:
+- Start UDP server to listen for queries from the login server
+- Real-time reporting of online count, max capacity, online status, and **TPS**
+- AES encrypted communication with pre-shared key support
+- Automatically broadcast status to the login server at regular intervals
+
+**Characteristics**: No commands, no configuration interface, runs automatically after configuration
+
+> **Why is it needed?** The main plugin can obtain subserver online counts through BungeeCord native channels, but **cannot obtain remote server TPS**. `LoginQueue2Online` reports TPS and other detailed status to the login server via UDP, enabling the `LEAST_LOAD` balancing strategy to work properly. If you only use `LEAST_PLAYERS` or `ROUND_ROBIN` strategies and don't need TPS monitoring, this plugin can theoretically be omitted.
+
 ### LoginQueue2BC (BungeeCord Proxy Plugin)
 
 **Platform**: BungeeCord
 **Install Location**: BungeeCord Proxy
+**Required**: **Optional**, only install when proxy-side channel features are needed
 
 **Core Features**:
 - Listen for custom plugin messaging channels
 - Handle player cross-server transfer requests (`ConnectOther` / `ConnectRequest`)
 - Handle server info query requests (`ServerInfo`)
 - Forward subserver status info to the login server
+- IP limits and SQLite database logging
 
-**Applicable Scenario**: Required when using BC channel priority mode
+**Applicable Scenario**: Install when using BC channel priority mode and requiring proxy-side intervention. In most cases, UDP priority mode can fully replace it.
 
 ### LoginQueue2VC (Velocity Proxy Plugin)
 
 **Platform**: Velocity 3.x
 **Install Location**: Velocity Proxy
+**Required**: **Optional**, only install when Velocity proxy-side channel features are needed
 
-**Core Features**: Same functionality as LS2BC, adapted for Velocity platform
+**Core Features**: Same functionality as LS2BC, adapted for the Velocity platform.
 
-**Applicable Scenario**: Required when using Velocity proxy with BC channel priority mode
+**Applicable Scenario**: Install when using Velocity proxy with BC channel priority mode. Similarly, UDP priority mode can replace it in most cases.
 
-### LoginQueue2Online (Subserver Status Reporting Plugin)
-
-**Platform**: Spigot/Paper 1.14+
-**Install Location**: Each Main Server
-
-**Core Features**:
-- Start UDP server to listen for queries from the login server
-- Real-time reporting of online count, max capacity, and online status
-- AES encrypted communication with pre-shared key support
-- Automatically broadcast status to the login server at regular intervals
-
-**Characteristics**: No commands, no configuration interface, runs automatically after configuration
+---
 
 ## Messaging Channels
 
 | Channel | Description | Usage Scenario |
 |---------|-------------|----------------|
-| `BungeeCord` | BungeeCord native channel for direct player transfers | UDP priority mode |
-| `loginqueue:connectother` | Notify proxy to transfer specified player to target server | BC priority mode |
-| `loginqueue:connectrequest` | Player actively requests connection to target server | BC priority mode |
-| `loginqueue:serverinfo` | Query / report server status information | BC priority mode |
+| `BungeeCord` | BungeeCord native channel for direct player transfers | UDP priority mode (no extra plugins needed) |
+| `loginqueue2:connectother` | Notify proxy to transfer specified player to target server | BC priority mode (requires BC/VC plugin) |
+| `loginqueue2:connectrequest` | Player actively requests connection to target server | BC priority mode (requires BC/VC plugin) |
+| `loginqueue2:serverinfo` | Query / report server status information | BC priority mode (requires BC/VC plugin) |
+| `UDP` | Direct UDP communication for server status | UDP priority mode (requires Online plugin) |
+
+---
 
 ## Requirements
 
 - Java 8+ (LoginQueue2VC requires Java 17)
 - Maven 3.6+
+
+---
 
 ## License
 

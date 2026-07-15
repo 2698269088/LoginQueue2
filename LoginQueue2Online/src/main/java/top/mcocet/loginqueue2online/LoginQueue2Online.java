@@ -9,6 +9,9 @@ import java.lang.reflect.Method;
 
 public final class LoginQueue2Online extends JavaPlugin {
 
+    /** 协议版本号：用于跨插件通信版本兼容性检查 */
+    public static final String PROTOCOL_VERSION = "1.4";
+
     public static final String CHANNEL_SERVER_INFO = "loginqueue2:serverinfo";
 
     private ServerInfoListener serverInfoListener;

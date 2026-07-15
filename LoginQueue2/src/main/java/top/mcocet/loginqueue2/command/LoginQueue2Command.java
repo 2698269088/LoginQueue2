@@ -52,6 +52,10 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
                 return handleRefresh(sender);
             case "reload":
                 return handleReload(sender);
+            case "pause":
+                return handlePause(sender);
+            case "resume":
+                return handleResume(sender);
             case "info":
                 return handleInfo(sender);
             case "help":
@@ -109,10 +113,10 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
         }
 
         if (listener.promotePlayerInQueue(target)) {
-            sender.sendMessage(ChatColor.GREEN + "已将玩家 " + target.getName() + " 的排队位置前进一位");
-            target.sendMessage(ChatColor.GREEN + "你的排队位置已前进一位！");
+            sender.sendMessage(languageManager.getMessage("queue-promote-success", "player", target.getName()));
+            target.sendMessage(languageManager.getMessage("queue-position-advanced"));
         } else {
-            sender.sendMessage(ChatColor.RED + "玩家 " + target.getName() + " 不在排队队列中，或已在第一位");
+            sender.sendMessage(languageManager.getMessage("queue-promote-fail", "player", target.getName()));
         }
         return true;
     }
@@ -171,13 +175,12 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
             }
             if (totalMax > 0) {
                 double totalRatio = (double) totalOnline / totalMax;
-                sender.sendMessage(ChatColor.GOLD + "总在线: " + totalOnline + "/" + totalMax
-                        + " (" + String.format("%.1f", totalRatio * 100) + "%)");
+                sender.sendMessage(languageManager.getMessage("total-online", "online", String.valueOf(totalOnline), "max", String.valueOf(totalMax), "ratio", String.format("%.1f", totalRatio * 100)));
                 sender.sendMessage(languageManager.getMessage("status-threshold", "threshold", String.format("%.1f", threshold * 100)));
                 sender.sendMessage(languageManager.getMessage(totalRatio >= threshold ? "status-queue-paused" : "status-queue-normal"));
             }
         }
-        sender.sendMessage(ChatColor.AQUA + "负载均衡策略: " + balanceStrategy);
+        sender.sendMessage(languageManager.getMessage("balance-strategy", "strategy", balanceStrategy));
         sender.sendMessage(languageManager.getMessage("status-queue-size", "size", String.valueOf(listener.getQueueSize())));
         sender.sendMessage(languageManager.getMessage("status-footer"));
         return true;
@@ -203,7 +206,40 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
         plugin.reloadConfig();
         plugin.saveDefaultConfig();
         languageManager.reload();
+        listener.reloadPriority();
         sender.sendMessage(languageManager.getMessage("reloaded"));
+        return true;
+    }
+
+    private boolean handlePause(CommandSender sender) {
+        if (!sender.hasPermission("loginqueue2.admin.pause")) {
+            sender.sendMessage(languageManager.getMessage("no-permission"));
+            return true;
+        }
+
+        if (listener.isQueuePaused()) {
+            sender.sendMessage(languageManager.getMessage("queue-already-paused"));
+            return true;
+        }
+
+        listener.pauseQueue();
+        sender.sendMessage(languageManager.getMessage("queue-paused"));
+        return true;
+    }
+
+    private boolean handleResume(CommandSender sender) {
+        if (!sender.hasPermission("loginqueue2.admin.pause")) {
+            sender.sendMessage(languageManager.getMessage("no-permission"));
+            return true;
+        }
+
+        if (!listener.isQueuePaused()) {
+            sender.sendMessage(languageManager.getMessage("queue-already-running"));
+            return true;
+        }
+
+        listener.resumeQueue();
+        sender.sendMessage(languageManager.getMessage("queue-resumed-admin"));
         return true;
     }
 
@@ -215,7 +251,7 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
 
         boolean newState = !plugin.isDebug();
         plugin.setDebug(newState);
-        sender.sendMessage(ChatColor.GREEN + "[LoginQueue] 调试模式已" + (newState ? "开启" : "关闭"));
+        sender.sendMessage(languageManager.getMessage(newState ? "debug-mode-on" : "debug-mode-off"));
         return true;
     }
 
@@ -290,6 +326,8 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
         sender.sendMessage(languageManager.getMessage("help-status"));
         sender.sendMessage(languageManager.getMessage("help-refresh"));
         sender.sendMessage(languageManager.getMessage("help-reload"));
+        sender.sendMessage(languageManager.getMessage("help-pause"));
+        sender.sendMessage(languageManager.getMessage("help-resume"));
         sender.sendMessage(languageManager.getMessage("help-info"));
         sender.sendMessage(languageManager.getMessage("help-help"));
         sender.sendMessage(languageManager.getMessage("help-footer"));
@@ -298,7 +336,7 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "refresh", "reload", "info", "help");
+            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "refresh", "reload", "pause", "resume", "info", "help");
             List<String> result = new ArrayList<>();
             for (String sub : subs) {
                 if (sub.startsWith(args[0].toLowerCase())) {

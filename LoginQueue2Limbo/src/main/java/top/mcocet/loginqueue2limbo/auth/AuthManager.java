@@ -2,6 +2,7 @@ package top.mcocet.loginqueue2limbo.auth;
 
 import com.loohp.limbo.Limbo;
 import top.mcocet.loginqueue2limbo.LoginQueue2Limbo;
+import top.mcocet.loginqueue2limbo.util.LanguageManager;
 
 import java.io.*;
 import java.math.BigInteger;
@@ -19,6 +20,7 @@ import java.util.logging.Level;
 public class AuthManager {
 
     private final LoginQueue2Limbo plugin;
+    private final LanguageManager languageManager;
     private final boolean enabled;
     private final File dataFile;
     private final Map<String, AuthData> authCache = new HashMap<>();
@@ -26,6 +28,7 @@ public class AuthManager {
 
     public AuthManager(LoginQueue2Limbo plugin) {
         this.plugin = plugin;
+        this.languageManager = plugin.getLanguageManager();
         this.enabled = plugin.getConfigValueBoolean("auth.enabled", false);
         this.dataFile = new File(plugin.getDataFolder(), "auth.dat");
         if (enabled) {
@@ -43,9 +46,9 @@ public class AuthManager {
             if (obj instanceof Map) {
                 authCache.putAll((Map<String, AuthData>) obj);
             }
-            Limbo.getInstance().getConsole().sendMessage("[Auth] 已加载 " + authCache.size() + " 条玩家数据");
+            Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("auth-data-loaded", "count", String.valueOf(authCache.size())));
         } catch (Exception e) {
-            Limbo.getInstance().getConsole().sendMessage("[Auth] 加载数据失败: " + e.getMessage());
+            Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("auth-data-load-failed", "error", e.getMessage()));
         }
     }
 
@@ -58,7 +61,7 @@ public class AuthManager {
                 oos.writeObject(new HashMap<>(authCache));
             }
         } catch (IOException e) {
-            Limbo.getInstance().getConsole().sendMessage("[Auth] 保存数据失败: " + e.getMessage());
+            Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("auth-data-save-failed", "error", e.getMessage()));
         }
     }
 

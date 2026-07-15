@@ -39,7 +39,7 @@ public class LanguageManager {
         if (langFile.exists()) {
             langConfig = YamlConfiguration.loadConfiguration(langFile);
         } else {
-            plugin.getLogger().warning("语言文件 lang/" + language + ".yml 不存在，使用内置默认语言。");
+            plugin.getLogger().warning("[LoginQueue2] Language file lang/" + language + ".yml not found, using built-in default language.");
             InputStream defaultStream = plugin.getResource("lang/zh_CN.yml");
             if (defaultStream != null) {
                 langConfig = YamlConfiguration.loadConfiguration(new InputStreamReader(defaultStream, StandardCharsets.UTF_8));
@@ -70,6 +70,35 @@ public class LanguageManager {
 
     public String getMessage(String key, String... placeholders) {
         String message = getMessage(key);
+        if (placeholders.length % 2 != 0) {
+            throw new IllegalArgumentException("占位符参数必须为键值对形式");
+        }
+        for (int i = 0; i < placeholders.length; i += 2) {
+            message = message.replace("{" + placeholders[i] + "}", placeholders[i + 1]);
+        }
+        return message;
+    }
+
+    public String getLogMessage(String key) {
+        if (cache.containsKey("log." + key)) {
+            return cache.get("log." + key);
+        }
+
+        String message = langConfig.getString("log-messages." + key, "Missing log message: " + key);
+        cache.put("log." + key, message);
+        return message;
+    }
+
+    public String getLogMessage(String key, Map<String, String> placeholders) {
+        String message = getLogMessage(key);
+        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+            message = message.replace("{" + entry.getKey() + "}", entry.getValue());
+        }
+        return message;
+    }
+
+    public String getLogMessage(String key, String... placeholders) {
+        String message = getLogMessage(key);
         if (placeholders.length % 2 != 0) {
             throw new IllegalArgumentException("占位符参数必须为键值对形式");
         }

@@ -2,6 +2,7 @@ package top.mcocet.loginqueue2online.udp;
 
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
+import top.mcocet.loginqueue2online.LoginQueue2Online;
 import top.mcocet.loginqueue2online.util.CryptoUtil;
 
 import java.io.IOException;
@@ -251,9 +252,14 @@ public class UDPServer {
         int online = Bukkit.getServer().getOnlinePlayers().size();
         int max = Bukkit.getServer().getMaxPlayers();
         boolean onlineStatus = true;
+        double tps = getTPS();
+        long usedMemory = getUsedMemory();
+        long maxMemory = getMaxMemory();
 
-        // 构造响应数据: serverName|online|max|onlineStatus
-        String rawResponse = serverName + SEPARATOR + online + SEPARATOR + max + SEPARATOR + onlineStatus;
+        // 构造响应数据: serverName|online|max|onlineStatus|tps|usedMemory|maxMemory|protocolVersion
+        String rawResponse = serverName + SEPARATOR + online + SEPARATOR + max + SEPARATOR + onlineStatus
+                + SEPARATOR + tps + SEPARATOR + usedMemory + SEPARATOR + maxMemory
+                + SEPARATOR + LoginQueue2Online.PROTOCOL_VERSION;
         String encryptedResponse = CryptoUtil.encryptWithStringKey(rawResponse, secretKey);
 
         String response = TYPE_SERVER_INFO_RESPONSE + SEPARATOR + encryptedResponse;
@@ -262,6 +268,25 @@ public class UDPServer {
         if (plugin.getConfig().getBoolean("debug", false)) {
             plugin.getLogger().info("UDP 已发送服务器信息响应: " + serverName + " [" + online + "/" + max + "]");
         }
+    }
+
+    private double getTPS() {
+        try {
+            Object minecraftServer = Bukkit.getServer().getClass().getMethod("getHandle").invoke(Bukkit.getServer());
+            double[] recentTps = (double[]) minecraftServer.getClass().getField("recentTps").get(minecraftServer);
+            return recentTps[0];
+        } catch (Exception e) {
+            return 20.0;
+        }
+    }
+
+    private long getUsedMemory() {
+        Runtime runtime = Runtime.getRuntime();
+        return (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024;
+    }
+
+    private long getMaxMemory() {
+        return Runtime.getRuntime().maxMemory() / 1024 / 1024;
     }
 
     private void sendPacket(InetAddress address, int port, String data) {

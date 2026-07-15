@@ -14,6 +14,7 @@ import top.mcocet.loginqueue2limbo.LoginQueue2Limbo;
 import top.mcocet.loginqueue2limbo.auth.AuthManager;
 import top.mcocet.loginqueue2limbo.auth.AuthRestrictionListener;
 import top.mcocet.loginqueue2limbo.bungee.BungeeMessenger;
+import top.mcocet.loginqueue2limbo.queue.PriorityManager;
 import top.mcocet.loginqueue2limbo.util.LanguageManager;
 
 import java.util.*;
@@ -24,13 +25,14 @@ public class PlayerJoinListener implements Listener {
     private final BungeeMessenger messenger;
     private final AuthManager authManager;
     private final AuthRestrictionListener authRestrictionListener;
-    private final List<String> priorityList;
-    private final int defaultPriority;
     private final double threshold;
     private final LanguageManager languageManager;
+    private final PriorityManager priorityManager;
 
     private final PriorityQueue<QueueEntry> waitingQueue;
     private final Set<UUID> allowedPlayers = new HashSet<>();
+    // 队列手动暂停状态
+    private boolean queuePaused = false;
 
     public PlayerJoinListener(LoginQueue2Limbo plugin, BungeeMessenger messenger,
                               AuthManager authManager, AuthRestrictionListener authRestrictionListener) {
@@ -38,11 +40,45 @@ public class PlayerJoinListener implements Listener {
         this.messenger = messenger;
         this.authManager = authManager;
         this.authRestrictionListener = authRestrictionListener;
-        this.priorityList = plugin.getConfigValueStringList("queue.priority");
-        this.defaultPriority = plugin.getConfigValueInt("queue.default-priority", 0);
         this.threshold = Math.max(0.0, Math.min(1.0, plugin.getConfigValueDouble("queue.threshold", 0.8)));
         this.languageManager = plugin.getLanguageManager();
-        this.waitingQueue = new PriorityQueue<>(Collections.reverseOrder(Comparator.comparingInt(QueueEntry::getPriority)));
+        this.priorityManager = new PriorityManager(plugin);
+
+        this.waitingQueue = new PriorityQueue<>(
+                Comparator.comparingInt(QueueEntry::getPriority).reversed()
+                        .thenComparingLong(QueueEntry::getTimestamp)
+        );
+    }
+
+    /**
+     * 重新加载优先级配置
+     */
+    public void reloadPriority() {
+        priorityManager.reload();
+    }
+
+    /**
+     * 手动暂停队列处理
+     */
+    public void pauseQueue() {
+        queuePaused = true;
+        notifyWaitingPlayers(languageManager.getMessage("queue-paused-manual"));
+    }
+
+    /**
+     * 手动恢复队列处理
+     */
+    public void resumeQueue() {
+        queuePaused = false;
+        notifyWaitingPlayers(languageManager.getMessage("queue-resumed"));
+        processQueue();
+    }
+
+    /**
+     * 检查队列是否被手动暂停
+     */
+    public boolean isQueuePaused() {
+        return queuePaused;
     }
 
     @EventHandler
@@ -53,6 +89,11 @@ public class PlayerJoinListener implements Listener {
         applyGameMode(player);
         teleportToSpawn(player);
 
+        // 显示服务器状态计分板
+        if (plugin.getScoreboardManager() != null && plugin.getScoreboardManager().isEnabled()) {
+            plugin.getScoreboardManager().showScoreboard(player);
+        }
+
         if (allowedPlayers.contains(uuid)) {
             return;
         }
@@ -61,9 +102,9 @@ public class PlayerJoinListener implements Listener {
         if (authManager.isEnabled()) {
             authRestrictionListener.removeAuthenticated(uuid);
             if (!authManager.isRegistered(player.getName())) {
-                player.sendMessage("[LoginQueue] 欢迎来到服务器！请使用 /register <密码> <确认密码> 注册账号");
+                player.sendMessage(languageManager.getMessage("auth-welcome-register"));
             } else {
-                player.sendMessage("[LoginQueue] 请使用 /login <密码> 登录");
+                player.sendMessage(languageManager.getMessage("auth-welcome-login"));
             }
             return;
         }
@@ -86,8 +127,8 @@ public class PlayerJoinListener implements Listener {
                     if (isInQueue(uuid)) {
                         return;
                     }
-                    int priority = calculatePriority(player);
-                    waitingQueue.offer(new QueueEntry(uuid, priority));
+                    int priority = priorityManager.calculatePriority(player);
+                    waitingQueue.offer(new QueueEntry(uuid, priority, System.currentTimeMillis()));
                     sendQueueStatus(player, uuid);
                     processQueue();
                     return;
@@ -108,8 +149,8 @@ public class PlayerJoinListener implements Listener {
                             if (isInQueue(uuid)) {
                                 return;
                             }
-                            int priority = calculatePriority(player);
-                            waitingQueue.offer(new QueueEntry(uuid, priority));
+                            int priority = priorityManager.calculatePriority(player);
+                            waitingQueue.offer(new QueueEntry(uuid, priority, System.currentTimeMillis()));
                             sendQueueStatus(player, uuid);
                             processQueue();
                         }
@@ -121,7 +162,12 @@ public class PlayerJoinListener implements Listener {
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
-        UUID uuid = event.getPlayer().getUniqueId();
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        // 隐藏计分板
+        if (plugin.getScoreboardManager() != null) {
+            plugin.getScoreboardManager().hideScoreboard(player);
+        }
         allowedPlayers.remove(uuid);
         waitingQueue.removeIf(entry -> entry.getUuid().equals(uuid));
         if (authRestrictionListener != null) {
@@ -152,24 +198,6 @@ public class PlayerJoinListener implements Listener {
                 "max", String.valueOf(max)));
     }
 
-    private int calculatePriority(Player player) {
-        for (int i = 0; i < priorityList.size(); i++) {
-            String rule = priorityList.get(i);
-            if (rule == null || rule.isEmpty()) continue;
-            String[] parts = rule.split(":", 2);
-            if (parts.length != 2) continue;
-            String type = parts[0].toLowerCase();
-            String value = parts[1];
-            if ("permission".equals(type) && player.hasPermission(value)) {
-                return priorityList.size() - i;
-            }
-            if ("name".equals(type) && player.getName().equalsIgnoreCase(value)) {
-                return priorityList.size() - i;
-            }
-        }
-        return defaultPriority;
-    }
-
     private int getPosition(UUID uuid) {
         int position = 1;
         for (QueueEntry entry : waitingQueue) {
@@ -198,7 +226,7 @@ public class PlayerJoinListener implements Listener {
         // 认证模式下，必须先通过登录认证才能入队
         if (authManager.isEnabled() && authRestrictionListener != null) {
             if (!authRestrictionListener.isAuthenticated(player.getUniqueId())) {
-                player.sendMessage("§c请先登录后再加入队列");
+                player.sendMessage(languageManager.getMessage("auth-please-login-first"));
                 return;
             }
         }
@@ -208,8 +236,8 @@ public class PlayerJoinListener implements Listener {
             messenger.notifyLoginSuccess(player);
         }
 
-        int priority = calculatePriority(player);
-        waitingQueue.offer(new QueueEntry(player.getUniqueId(), priority));
+        int priority = priorityManager.calculatePriority(player);
+        waitingQueue.offer(new QueueEntry(player.getUniqueId(), priority, System.currentTimeMillis()));
         sendQueueStatus(player, player.getUniqueId());
         processQueue();
     }
@@ -297,7 +325,7 @@ public class PlayerJoinListener implements Listener {
         try {
             gameMode = GameMode.valueOf(modeName.toUpperCase());
         } catch (IllegalArgumentException | NullPointerException e) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 配置的游戏模式 " + modeName + " 无效，使用默认 ADVENTURE 模式。");
+            Limbo.getInstance().getConsole().sendMessage(plugin.getLanguageManager().getLogMessage("invalid-gamemode", "mode", modeName));
             gameMode = GameMode.ADVENTURE;
         }
         player.setGamemode(gameMode);
@@ -349,6 +377,11 @@ public class PlayerJoinListener implements Listener {
             }
         }
 
+        // 手动暂停队列
+        if (queuePaused) {
+            return;
+        }
+
         if (!anyOnline) {
             return;
         }
@@ -396,10 +429,12 @@ public class PlayerJoinListener implements Listener {
     private static class QueueEntry {
         private final UUID uuid;
         private final int priority;
+        private final long timestamp;
 
-        QueueEntry(UUID uuid, int priority) {
+        QueueEntry(UUID uuid, int priority, long timestamp) {
             this.uuid = uuid;
             this.priority = priority;
+            this.timestamp = timestamp;
         }
 
         UUID getUuid() {
@@ -408,6 +443,10 @@ public class PlayerJoinListener implements Listener {
 
         int getPriority() {
             return priority;
+        }
+
+        long getTimestamp() {
+            return timestamp;
         }
     }
 }

@@ -68,12 +68,21 @@ queue:
   max-online: 50
   # 负载均衡策略: LEAST_PLAYERS 最少玩家, LEAST_LOAD 最低负载, ROUND_ROBIN 轮询, RANDOM 随机
   balance-strategy: LEAST_PLAYERS
-  # 排序优先级（越靠前优先级越高）
-  # 支持 permission:xxx 和 name:xxx 两种匹配方式
+  # 是否启用优先队列系统
+  priority-enabled: true
+  # 排序优先级规则（越靠前默认权重越高，也可自定义权重）
+  # 支持以下匹配方式：
+  #   permission:权限节点[:权重]  - 拥有指定权限的玩家
+  #   name:玩家名[:权重]          - 指定玩家名（精确匹配）
+  #   uuid:玩家UUID[:权重]        - 指定玩家UUID
+  #   regex:正则表达式[:权重]      - 玩家名匹配正则表达式
+  #   group:权限组名[:权重]        - 拥有指定权限组的玩家（通过 group.组名 权限检测）
+  # 权重越高优先级越高，不指定权重时按列表顺序递减（第一条100，第二条99...）
   priority:
-    - "permission:loginqueue2.vip"
-    - "permission:loginqueue2.priority"
-    - "name:Player1"
+    - "permission:loginqueue2.vip:100"
+    - "permission:loginqueue2.priority:80"
+    - "regex:^[A-Z].*:50"
+    - "name:Player1:90"
   # 默认优先级（数字越大越优先）
   default-priority: 0
   # 向 BungeeCord 刷新主服信息的周期（秒）
@@ -128,3 +137,17 @@ queue:
     yaw: 0.0
     # 随机出生半径（在中心点周围此半径内随机生成位置，0 表示固定位置）
     radius: 8.5
+
+# 服务器状态计分板配置（Limbo 使用 Action Bar 显示）
+scoreboard:
+  # 是否启用服务器状态显示
+  enabled: true
+  # 轮换显示服务器的间隔（秒）
+  rotate-interval: 10
+  # 更新显示的间隔（秒）
+  update-interval: 2
+  # 要在计分板中显示的服务器列表
+  servers:
+    - "main"
+    - "main1"
+    - "main2"

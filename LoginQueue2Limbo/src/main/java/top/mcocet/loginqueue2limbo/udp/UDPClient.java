@@ -2,9 +2,9 @@ package top.mcocet.loginqueue2limbo.udp;
 
 import com.loohp.limbo.Limbo;
 import top.mcocet.loginqueue2limbo.LoginQueue2Limbo;
-import top.mcocet.loginqueue2limbo.LoginQueue2Limbo;
 import top.mcocet.loginqueue2limbo.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2limbo.util.CryptoUtil;
+import top.mcocet.loginqueue2limbo.util.LanguageManager;
 
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -24,6 +24,9 @@ import java.util.concurrent.Executors;
  */
 public class UDPClient {
 
+    /** 协议版本号：用于跨插件通信版本兼容性检查 */
+    public static final String PROTOCOL_VERSION = "1.4";
+
     private static final String TYPE_KEY_REQUEST = "KEY_REQ";
     private static final String TYPE_KEY_EXCHANGE = "KEY_EXCH";
     private static final String TYPE_SERVER_INFO_REQUEST = "INFO_REQ";
@@ -33,6 +36,7 @@ public class UDPClient {
     private static final char SEPARATOR_CHAR = '|';
 
     private final LoginQueue2Limbo plugin;
+    private final LanguageManager languageManager;
     private final String serverName;
     private final String host;
     private final int port;
@@ -52,6 +56,7 @@ public class UDPClient {
 
     public UDPClient(LoginQueue2Limbo plugin, String serverName, String host, int port, int gamePort, int timeout, String configuredKey, String plannedKey) {
         this.plugin = plugin;
+        this.languageManager = plugin.getLanguageManager();
         this.serverName = serverName;
         this.host = host;
         this.port = port;
@@ -70,10 +75,14 @@ public class UDPClient {
         return plugin.isDebug();
     }
 
+    private void log(String message) {
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("plugin-prefix") + " " + message);
+    }
+
     public boolean init() {
         if (initialized) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 客户端 [" + serverName + "] 已初始化，跳过重复初始化。");
+                log(languageManager.getLogMessage("udp-client-already-initialized", "server", serverName));
             }
             return true;
         }
@@ -91,43 +100,43 @@ public class UDPClient {
                 return t;
             });
 
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 客户端 [" + serverName + "] 已初始化，目标: " + host + ":" + port);
+            log(languageManager.getLogMessage("udp-client-initialized", "server", serverName, "host", host, "port", String.valueOf(port)));
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 超时设置: " + timeout + "ms");
+                log(languageManager.getLogMessage("udp-timeout-set", "server", serverName, "timeout", String.valueOf(timeout)));
             }
 
             // 如果配置了密钥，直接使用；否则自动生成密钥并同步给服务端
             if (configuredKey != null && !configuredKey.isEmpty()) {
                 secretKey = configuredKey;
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 使用配置文件中的预设密钥。");
+                log(languageManager.getLogMessage("udp-using-configured-key", "server", serverName));
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 密钥长度: " + configuredKey.length() + " 字符");
+                    log(languageManager.getLogMessage("udp-key-length", "server", serverName, "length", String.valueOf(configuredKey.length())));
                 }
             } else {
                 // 自动生成密钥，并尝试同步给服务端
                 secretKey = CryptoUtil.generateRandomKey();
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 密钥已自动生成，正在同步给服务端...");
+                log(languageManager.getLogMessage("udp-auto-generating-key", "server", serverName));
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 自动生成的密钥长度: " + secretKey.length() + " 字符");
+                    log(languageManager.getLogMessage("udp-auto-key-length", "server", serverName, "length", String.valueOf(secretKey.length())));
                     if (plannedKey != null && !plannedKey.isEmpty()) {
-                        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 将使用 planned-key 加密传输密钥。");
+                        log(languageManager.getLogMessage("udp-using-planned-key", "server", serverName));
                     } else {
-                        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 未配置 planned-key，将以明文传输密钥（向后兼容）。");
+                        log(languageManager.getLogMessage("udp-no-planned-key", "server", serverName));
                     }
                 }
                 if (!exchangeKey()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 密钥同步失败，无法使用 UDP 同步");
+                    log(languageManager.getLogMessage("udp-key-sync-failed", "server", serverName));
                     closeSocket();
                     return false;
                 }
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 密钥已同步给服务端。");
+                log(languageManager.getLogMessage("udp-key-synced", "server", serverName));
             }
 
             initialized = true;
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 客户端 [" + serverName + "] 初始化完成。");
+            log(languageManager.getLogMessage("udp-init-complete", "server", serverName));
             return true;
         } catch (SocketException e) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 客户端 [" + serverName + "] 初始化失败: " + e.getMessage());
+            log(languageManager.getLogMessage("udp-init-failed", "server", serverName, "error", e.getMessage()));
             if (isDebug()) {
                 e.printStackTrace();
             }
@@ -142,7 +151,7 @@ public class UDPClient {
         initialized = false;
         closeSocket();
         shutdownExecutor();
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 客户端 [" + serverName + "] 已关闭。");
+        log(languageManager.getLogMessage("udp-client-shutdown", "server", serverName));
     }
 
     private void closeSocket() {
@@ -170,7 +179,7 @@ public class UDPClient {
             // 使用 planned-key 加密 secretKey
             keyToSend = CryptoUtil.encryptWithStringKey(secretKey, plannedKey);
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 使用 planned-key 加密传输密钥。");
+                log(languageManager.getLogMessage("udp-using-planned-key", "server", serverName));
             }
         } else {
             // 明文传输（向后兼容）
@@ -179,48 +188,48 @@ public class UDPClient {
 
         String request = TYPE_KEY_EXCHANGE + SEPARATOR_CHAR + keyToSend;
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 发送密钥同步请求: " + TYPE_KEY_EXCHANGE + "|***");
+            log(languageManager.getLogMessage("udp-sending-key-exchange", "server", serverName));
         }
         String response = sendAndReceiveSync(request);
 
         if (response == null) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 密钥同步无响应（超时或通信异常）。");
+                log(languageManager.getLogMessage("udp-key-exchange-no-response", "server", serverName));
             }
             return false;
         }
 
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 收到密钥同步响应: " + response.substring(0, Math.min(response.length(), 50)) + "...");
+            log(languageManager.getLogMessage("udp-key-exchange-response", "server", serverName, "response", response.substring(0, Math.min(response.length(), 50))));
         }
 
         // 服务端返回 KEY_ERR 表示没有密钥且不接受同步（旧版本兼容）
         if (response.startsWith(TYPE_KEY_ERROR)) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 服务端拒绝密钥同步: " + response.substring(TYPE_KEY_ERROR.length() + 1));
+            log(languageManager.getLogMessage("udp-key-exchange-rejected", "server", serverName, "reason", response.substring(TYPE_KEY_ERROR.length() + 1)));
             return false;
         }
 
         // 解析响应: KEY_RESP|serverName|OK
         if (!response.startsWith(TYPE_KEY_RESPONSE)) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 密钥同步响应格式错误");
+            log(languageManager.getLogMessage("udp-key-exchange-format-error", "server", serverName));
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 预期 " + TYPE_KEY_RESPONSE + "，实际收到: " + response.substring(0, Math.min(response.length(), 20)));
+                log(languageManager.getLogMessage("udp-key-exchange-unexpected", "server", serverName, "expected", TYPE_KEY_RESPONSE, "actual", response.substring(0, Math.min(response.length(), 20))));
             }
             return false;
         }
         String payload = response.substring(TYPE_KEY_RESPONSE.length() + 1);
         int firstSep = payload.indexOf(SEPARATOR_CHAR);
         if (firstSep < 0) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 密钥同步响应格式错误: 缺少分隔符");
+            log(languageManager.getLogMessage("udp-key-exchange-missing-separator", "server", serverName));
             return false;
         }
         String serverName = payload.substring(0, firstSep);
         String result = payload.substring(firstSep + 1);
         if (!"OK".equals(result)) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 密钥同步失败，服务端返回: " + result);
+            log(languageManager.getLogMessage("udp-key-exchange-server-returned", "server", serverName, "result", result));
             return false;
         }
-        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 密钥已同步到服务端");
+        log(languageManager.getLogMessage("udp-key-synced-to-server", "server", serverName));
         return true;
     }
 
@@ -252,7 +261,7 @@ public class UDPClient {
         try {
             encryptedRequest = CryptoUtil.encryptWithStringKey("GET_INFO", secretKey);
         } catch (Exception e) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 请求加密失败: " + e.getMessage());
+            log(languageManager.getLogMessage("udp-encrypt-failed", "error", e.getMessage()));
             if (isDebug()) {
                 e.printStackTrace();
             }
@@ -261,19 +270,19 @@ public class UDPClient {
 
         String request = TYPE_SERVER_INFO_REQUEST + SEPARATOR_CHAR + encryptedRequest;
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 发送服务器信息请求...");
+            log(languageManager.getLogMessage("udp-sending-server-info-request", "server", serverName));
         }
         String response = sendAndReceiveSync(request);
 
         if (response == null) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 服务器信息请求无响应（超时或通信异常）。");
+                log(languageManager.getLogMessage("udp-server-info-no-response", "server", serverName));
             }
             return null;
         }
 
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 收到响应: " + response.substring(0, Math.min(response.length(), 30)) + "...");
+            log(languageManager.getLogMessage("udp-received-response", "server", serverName, "response", response.substring(0, Math.min(response.length(), 30))));
         }
 
         // 服务端返回 KEY_ERR，表示没有密钥
@@ -283,25 +292,25 @@ public class UDPClient {
             String errorCode = firstSep >= 0 ? payload.substring(firstSep + 1) : payload;
 
             if ("NO_KEY".equals(errorCode) && !isRetry) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 服务端没有密钥，正在同步密钥...");
+                log(languageManager.getLogMessage("udp-server-no-key", "server", serverName));
                 if (exchangeKey()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 密钥同步成功，重新请求服务器信息...");
+                    log(languageManager.getLogMessage("udp-key-resync-success", "server", serverName));
                     return doRequestServerInfo(true);
                 } else {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 密钥同步失败，无法获取服务器信息");
+                    log(languageManager.getLogMessage("udp-key-resync-failed", "server", serverName));
                     return null;
                 }
             }
 
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 服务器信息请求被拒绝: " + errorCode);
+            log(languageManager.getLogMessage("udp-server-info-rejected", "server", serverName, "errorCode", errorCode));
             return null;
         }
 
         // 解析响应: INFO_RESP|encryptedData
         if (!response.startsWith(TYPE_SERVER_INFO_RESPONSE)) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 服务器信息响应格式错误");
+            log(languageManager.getLogMessage("udp-server-info-format-error", "server", serverName));
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 预期 " + TYPE_SERVER_INFO_RESPONSE + "，实际收到: " + response.substring(0, Math.min(response.length(), 20)));
+                log(languageManager.getLogMessage("udp-server-info-unexpected", "server", serverName, "expected", TYPE_SERVER_INFO_RESPONSE, "actual", response.substring(0, Math.min(response.length(), 20))));
             }
             return null;
         }
@@ -312,21 +321,21 @@ public class UDPClient {
         try {
             decrypted = CryptoUtil.decryptWithStringKey(encryptedPayload, secretKey);
         } catch (Exception e) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 服务器信息响应解密失败: " + e.getMessage());
+            log(languageManager.getLogMessage("udp-decrypt-failed", "server", serverName, "error", e.getMessage()));
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 解密失败详情 - 密文长度: " + encryptedPayload.length() + ", 密钥长度: " + (secretKey != null ? secretKey.length() : "null"));
+                log(languageManager.getLogMessage("udp-decrypt-details", "server", serverName, "cipherLength", String.valueOf(encryptedPayload.length()), "keyLength", secretKey != null ? String.valueOf(secretKey.length()) : "null"));
             }
             return null;
         }
 
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 解密后数据: " + decrypted);
+            log(languageManager.getLogMessage("udp-decrypted-data", "server", serverName, "data", decrypted));
         }
 
-        // 解析数据: serverName|online|max|onlineStatus
-        String[] dataParts = decrypted.split("\\|", 4);
+        // 解析数据: serverName|online|max|onlineStatus|tps|usedMemory|maxMemory
+        String[] dataParts = decrypted.split("\\|", 7);
         if (dataParts.length < 4) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 服务器信息数据格式错误: " + decrypted);
+            log(languageManager.getLogMessage("udp-server-info-data-error", "server", serverName, "data", decrypted));
             return null;
         }
 
@@ -335,17 +344,31 @@ public class UDPClient {
             int online = Integer.parseInt(dataParts[1]);
             int maxPlayers = Integer.parseInt(dataParts[2]);
             boolean onlineStatus = Boolean.parseBoolean(dataParts[3]);
+            double tps = dataParts.length >= 5 ? Double.parseDouble(dataParts[4]) : 20.0;
+            long usedMemory = dataParts.length >= 6 ? Long.parseLong(dataParts[5]) : 0;
+            long maxMemory = dataParts.length >= 7 ? Long.parseLong(dataParts[6]) : 0;
+            String remoteProtocolVersion = dataParts.length >= 8 ? dataParts[7] : null;
 
-            BungeeMessenger.ServerStatus status = new BungeeMessenger.ServerStatus(serverName, online, maxPlayers, onlineStatus);
+            BungeeMessenger.ServerStatus status = new BungeeMessenger.ServerStatus(serverName, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory);
             statusCache.put(serverName, status);
 
+            // 协议版本兼容性检查
+            if (remoteProtocolVersion != null && !remoteProtocolVersion.isEmpty()
+                    && !PROTOCOL_VERSION.equals(remoteProtocolVersion)) {
+                log(languageManager.getLogMessage("protocol-version-mismatch-header"));
+                log(languageManager.getLogMessage("protocol-version-mismatch", "localVersion", PROTOCOL_VERSION, "server", serverName, "remoteVersion", remoteProtocolVersion));
+                log(languageManager.getLogMessage("protocol-version-mismatch-suggestion"));
+                log(languageManager.getLogMessage("protocol-version-mismatch-note"));
+                log(languageManager.getLogMessage("protocol-version-mismatch-header"));
+            }
+
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 获取到服务器信息: " + status);
+                log(languageManager.getLogMessage("udp-get-server-info", "server", serverName, "status", status.toString()));
             }
 
             return status;
         } catch (NumberFormatException e) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 服务器信息数据解析失败: " + e.getMessage());
+            log(languageManager.getLogMessage("udp-server-info-parse-failed", "server", serverName, "error", e.getMessage()));
             return null;
         }
     }
@@ -372,7 +395,7 @@ public class UDPClient {
     private String sendAndReceiveSync(String data) {
         if (socket == null || socket.isClosed()) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] Socket 未初始化或已关闭，无法发送请求。");
+                log(languageManager.getLogMessage("udp-socket-not-ready", "server", serverName));
             }
             return null;
         }
@@ -383,7 +406,7 @@ public class UDPClient {
             DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, address, port);
 
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 发送数据到 " + host + ":" + port + "，长度: " + sendData.length + " 字节");
+                log(languageManager.getLogMessage("udp-sending-data", "server", serverName, "host", host, "port", String.valueOf(port), "length", String.valueOf(sendData.length)));
             }
             socket.send(sendPacket);
 
@@ -393,17 +416,17 @@ public class UDPClient {
 
             String response = new String(receivePacket.getData(), 0, receivePacket.getLength(), StandardCharsets.UTF_8);
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 收到来自 " + receivePacket.getAddress().getHostAddress() + ":" + receivePacket.getPort() + " 的响应，长度: " + receivePacket.getLength() + " 字节");
+                log(languageManager.getLogMessage("udp-received-from", "server", serverName, "host", receivePacket.getAddress().getHostAddress(), "port", String.valueOf(receivePacket.getPort()), "length", String.valueOf(receivePacket.getLength())));
             }
             return response;
         } catch (SocketTimeoutException e) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 请求超时（" + timeout + "ms）: " + e.getMessage());
+                log(languageManager.getLogMessage("udp-request-timeout", "server", serverName, "timeout", String.valueOf(timeout), "error", e.getMessage()));
             }
             return null;
         } catch (IOException e) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP [" + serverName + "] 通信异常: " + e.getMessage());
+                log(languageManager.getLogMessage("udp-communication-error", "server", serverName, "error", e.getMessage()));
             }
             return null;
         }
@@ -420,7 +443,7 @@ public class UDPClient {
     public BungeeMessenger.ServerStatus requestServerInfoViaMSLP(String targetIp, int targetPort) {
         String ip = targetIp != null ? targetIp : host;
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] MSLP [" + serverName + "] 开始检测，目标=" + ip + ":" + targetPort);
+            log(languageManager.getLogMessage("mslp-check-start", "server", serverName, "ip", ip, "port", String.valueOf(targetPort)));
         }
         try (java.net.Socket socket = new java.net.Socket()) {
             socket.connect(new java.net.InetSocketAddress(ip, targetPort), timeout);
@@ -459,7 +482,7 @@ public class UDPClient {
             String json = new String(jsonBytes, java.nio.charset.StandardCharsets.UTF_8);
 
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] MSLP [" + serverName + "] 响应: " + json.substring(0, Math.min(json.length(), 200)));
+                log(languageManager.getLogMessage("mslp-response", "server", serverName, "json", json.substring(0, Math.min(json.length(), 200))));
             }
 
             // 解析JSON
@@ -472,12 +495,12 @@ public class UDPClient {
             statusCache.put(serverName, status);
 
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] MSLP [" + serverName + "] 获取到服务器信息: " + status);
+                log(languageManager.getLogMessage("mslp-success", "server", serverName, "status", status.toString()));
             }
             return status;
         } catch (Exception e) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] MSLP [" + serverName + "] 检测失败: " + e.getMessage());
+                log(languageManager.getLogMessage("mslp-failed", "server", serverName, "error", e.getMessage()));
             }
             return null;
         }
@@ -521,6 +544,10 @@ public class UDPClient {
 
     public int getGamePort() {
         return gamePort;
+    }
+
+    public String getHost() {
+        return host;
     }
 
     public ConcurrentHashMap<String, BungeeMessenger.ServerStatus> getStatusCache() {

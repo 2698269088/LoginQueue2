@@ -49,6 +49,9 @@ permissions:
   loginqueue2.admin.promote:
     description: 允许将玩家排队位置前进一位
     default: op
+  loginqueue2.admin.pause:
+    description: 允许暂停/恢复队列
+    default: op
   loginqueue2.admin.bypass:
     description: 不受登录服限制
     default: op

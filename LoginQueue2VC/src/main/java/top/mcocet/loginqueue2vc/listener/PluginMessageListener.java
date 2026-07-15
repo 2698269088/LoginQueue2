@@ -185,11 +185,20 @@ public class PluginMessageListener {
         }
         plugin.debug("ServerInfo: 收到请求查询服务器: " + serverName);
 
+        // 检查是否是版本查询请求
+        if ("VERSION_CHECK".equals(serverName)) {
+            String vcProtocolVersion = LoginQueue2VC.PROTOCOL_VERSION;
+            plugin.debug("ServerInfo: 收到协议版本查询请求，返回协议版本: " + vcProtocolVersion);
+            findAnyPlayerToRespond(event.getSource(), "VERSION_CHECK", 0, 0, true, 0.0, 0, 0, vcProtocolVersion);
+            event.setResult(PluginMessageEvent.ForwardResult.handled());
+            return;
+        }
+
         Optional<RegisteredServer> targetOpt = server.getServer(serverName);
         if (targetOpt.isEmpty()) {
             plugin.debug("ServerInfo: 目标服务器 " + serverName + " 不存在，返回离线状态");
             // 需要找到一个玩家来发送响应
-            findAnyPlayerToRespond(event.getSource(), serverName, 0, 0, false);
+            findAnyPlayerToRespond(event.getSource(), serverName, 0, 0, false, 0.0, 0, 0);
             event.setResult(PluginMessageEvent.ForwardResult.handled());
             return;
         }
@@ -218,7 +227,7 @@ public class PluginMessageListener {
             // 目标服务器没有玩家，无法通过玩家连接转发请求
             // 返回在线状态为 true，但人数为 0，让 Main 端自行判断
             plugin.debug("ServerInfo: 目标服务器没有玩家，返回在线但人数为0");
-            findAnyPlayerToRespond(event.getSource(), serverName, 0, targetServer.getPlayersConnected().size(), true);
+            findAnyPlayerToRespond(event.getSource(), serverName, 0, targetServer.getPlayersConnected().size(), true, 0.0, 0, 0);
         }
 
         event.setResult(PluginMessageEvent.ForwardResult.handled());
@@ -227,22 +236,25 @@ public class PluginMessageListener {
     /**
      * 向与消息来源关联的任意玩家发送响应
      */
-    private void findAnyPlayerToRespond(Object source, String serverName, int online, int maxPlayers, boolean onlineStatus) {
+    private void findAnyPlayerToRespond(Object source, String serverName, int online, int maxPlayers, boolean onlineStatus, double tps, long usedMemory, long maxMemory, String version) {
         if (source instanceof Player) {
-            sendServerInfoResponse((Player) source, serverName, online, maxPlayers, onlineStatus);
+            sendServerInfoResponse((Player) source, serverName, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory, version);
         } else if (source instanceof ServerConnection) {
-            // 从来源服务器上找一个玩家来发送响应
             ServerConnection conn = (ServerConnection) source;
             for (Player p : conn.getServer().getPlayersConnected()) {
-                sendServerInfoResponse(p, serverName, online, maxPlayers, onlineStatus);
+                sendServerInfoResponse(p, serverName, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory, version);
                 return;
             }
         }
     }
 
+    private void findAnyPlayerToRespond(Object source, String serverName, int online, int maxPlayers, boolean onlineStatus, double tps, long usedMemory, long maxMemory) {
+        findAnyPlayerToRespond(source, serverName, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory, null);
+    }
+
     /**
      * 处理来自子服务器的 ServerInfo 响应
-     * 响应格式: [serverName] [online] [maxPlayers] [onlineStatus]
+     * 响应格式: [serverName] [online] [maxPlayers] [onlineStatus] [tps] [usedMemory] [maxMemory]
      * 策略：将响应转发给当前在该子服务器上的所有玩家。
      */
     private void handleServerInfoResponse(PluginMessageEvent event) {
@@ -257,6 +269,9 @@ public class PluginMessageListener {
         int online;
         int maxPlayers;
         boolean onlineStatus;
+        double tps = 20.0;
+        long usedMemory = 0;
+        long maxMemory = 0;
         try {
             type = in.readUTF();
             serverName = in.readUTF();
@@ -267,18 +282,28 @@ public class PluginMessageListener {
             plugin.debug("ServerInfo: 读取到 maxPlayers=" + maxPlayers);
             onlineStatus = in.readBoolean();
             plugin.debug("ServerInfo: 读取到 onlineStatus=" + onlineStatus);
+            // 尝试读取扩展字段（TPS、内存）
+            try {
+                tps = in.readDouble();
+                usedMemory = in.readLong();
+                maxMemory = in.readLong();
+                plugin.debug("ServerInfo: 读取到 TPS=" + tps + " usedMemory=" + usedMemory + "MB maxMemory=" + maxMemory + "MB");
+            } catch (Exception e) {
+                // 旧版本插件没有这些字段，使用默认值
+                plugin.debug("ServerInfo: 扩展字段读取失败（可能是旧版本插件），使用默认值");
+            }
         } catch (Exception e) {
             logger.warn("ServerInfo 响应格式错误: {} 数据长度={} 字节 来源服务器={}",
                     e.getMessage(), data.length, sourceServer.getServerInfo().getName());
             return;
         }
 
-        plugin.debug("ServerInfo: 响应 " + serverName + " 在线=" + online + " 最大=" + maxPlayers + " 状态=" + onlineStatus);
+        plugin.debug("ServerInfo: 响应 " + serverName + " 在线=" + online + " 最大=" + maxPlayers + " 状态=" + onlineStatus + " TPS=" + tps);
         // 将响应转发给所有子服务器上的所有在线玩家，确保请求者能收到
         int playerCount = 0;
         for (RegisteredServer rs : server.getAllServers()) {
             for (Player player : rs.getPlayersConnected()) {
-                sendServerInfoResponse(player, serverName, online, maxPlayers, onlineStatus);
+                sendServerInfoResponse(player, serverName, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory);
                 playerCount++;
             }
         }
@@ -287,13 +312,19 @@ public class PluginMessageListener {
         event.setResult(PluginMessageEvent.ForwardResult.handled());
     }
 
-    private void sendServerInfoResponse(Player sender, String serverName, int online, int maxPlayers, boolean onlineStatus) {
+    private void sendServerInfoResponse(Player sender, String serverName, int online, int maxPlayers, boolean onlineStatus, double tps, long usedMemory, long maxMemory, String version) {
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF("RESP");
         out.writeUTF(serverName);
         out.writeInt(online);
         out.writeInt(maxPlayers);
         out.writeBoolean(onlineStatus);
+        out.writeDouble(tps);
+        out.writeLong(usedMemory);
+        out.writeLong(maxMemory);
+        if (version != null) {
+            out.writeUTF(version);
+        }
 
         sender.getCurrentServer().ifPresent(conn ->
                 conn.sendPluginMessage(
@@ -301,6 +332,10 @@ public class PluginMessageListener {
                         out.toByteArray()
                 )
         );
+    }
+
+    private void sendServerInfoResponse(Player sender, String serverName, int online, int maxPlayers, boolean onlineStatus, double tps, long usedMemory, long maxMemory) {
+        sendServerInfoResponse(sender, serverName, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory, null);
     }
 
     /**

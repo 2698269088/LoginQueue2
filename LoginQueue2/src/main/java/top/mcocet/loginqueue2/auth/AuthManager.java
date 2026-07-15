@@ -13,6 +13,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.sql.*;
 import java.util.Locale;
+import top.mcocet.loginqueue2.util.LanguageManager;
 import java.util.logging.Level;
 
 /**
@@ -21,12 +22,14 @@ import java.util.logging.Level;
 public class AuthManager {
 
     private final JavaPlugin plugin;
+    private final LanguageManager languageManager;
     private final boolean enabled;
     private Connection connection;
     private final SecureRandom random = new SecureRandom();
 
     public AuthManager(JavaPlugin plugin) {
         this.plugin = plugin;
+        this.languageManager = ((top.mcocet.loginqueue2.LoginQueue2) plugin).getLanguageManager();
         this.enabled = plugin.getConfig().getBoolean("auth.enabled", false);
         if (enabled) {
             initDatabase();
@@ -50,9 +53,9 @@ public class AuthManager {
                         + "regip TEXT"
                         + ")");
             }
-            plugin.getLogger().info("[Auth] SQLite 数据库已初始化");
+            plugin.getLogger().info(languageManager.getLogMessage("auth-db-initialized"));
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "[Auth] 数据库初始化失败", e);
+            plugin.getLogger().log(Level.SEVERE, languageManager.getLogMessage("auth-db-init-failed"), e);
         }
     }
 
@@ -72,7 +75,7 @@ public class AuthManager {
                 return rs.next();
             }
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "[Auth] 查询注册状态失败", e);
+            plugin.getLogger().log(Level.WARNING, languageManager.getLogMessage("auth-query-failed"), e);
             return false;
         }
     }
@@ -101,7 +104,7 @@ public class AuthManager {
             ps.setString(8, ip);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "[Auth] 注册玩家失败", e);
+            plugin.getLogger().log(Level.WARNING, languageManager.getLogMessage("auth-register-failed"), e);
             return false;
         }
     }
@@ -122,7 +125,7 @@ public class AuthManager {
                 }
             }
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "[Auth] 验证密码失败", e);
+            plugin.getLogger().log(Level.WARNING, languageManager.getLogMessage("auth-check-password-failed"), e);
         }
         return false;
     }
@@ -139,7 +142,7 @@ public class AuthManager {
             ps.setString(3, username.toLowerCase(Locale.ROOT));
             ps.executeUpdate();
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "[Auth] 更新登录信息失败", e);
+            plugin.getLogger().log(Level.WARNING, languageManager.getLogMessage("auth-update-login-failed"), e);
         }
     }
 
@@ -157,7 +160,7 @@ public class AuthManager {
             ps.setString(3, username.toLowerCase(Locale.ROOT));
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "[Auth] 修改密码失败", e);
+            plugin.getLogger().log(Level.WARNING, languageManager.getLogMessage("auth-change-password-failed"), e);
             return false;
         }
     }
@@ -184,7 +187,7 @@ public class AuthManager {
             try {
                 connection.close();
             } catch (SQLException e) {
-                plugin.getLogger().log(Level.WARNING, "[Auth] 关闭数据库失败", e);
+                plugin.getLogger().log(Level.WARNING, languageManager.getLogMessage("auth-close-db-failed"), e);
             }
         }
     }

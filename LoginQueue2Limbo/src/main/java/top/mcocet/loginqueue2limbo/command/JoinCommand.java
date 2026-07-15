@@ -44,7 +44,7 @@ public class JoinCommand implements CommandExecutor {
         if (plugin.getAuthManager().isEnabled()
                 && plugin.getAuthRestrictionListener() != null
                 && !plugin.getAuthRestrictionListener().isAuthenticated(player.getUniqueId())) {
-            player.sendMessage("§c请先登录后再使用此命令");
+            player.sendMessage(languageManager.getMessage("auth-please-login-command"));
             return;
         }
 

@@ -68,6 +68,12 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
             case "reload":
                 handleReload(sender);
                 break;
+            case "pause":
+                handlePause(sender);
+                break;
+            case "resume":
+                handleResume(sender);
+                break;
             case "info":
                 handleInfo(sender);
                 break;
@@ -125,10 +131,10 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
         }
 
         if (listener.promotePlayerInQueue(target)) {
-            sender.sendMessage(LegacyComponentSerializer.legacySection().serialize(LegacyComponentSerializer.legacyAmpersand().deserialize("&a已将玩家 " + target.getName() + " 的排队位置前进一位")));
-            target.sendMessage(LegacyComponentSerializer.legacySection().serialize(LegacyComponentSerializer.legacyAmpersand().deserialize("&a你的排队位置已前进一位！")));
+            sender.sendMessage(languageManager.getMessage("queue-promote-success", "player", target.getName()));
+            target.sendMessage(languageManager.getMessage("queue-position-advanced"));
         } else {
-            sender.sendMessage(LegacyComponentSerializer.legacySection().serialize(LegacyComponentSerializer.legacyAmpersand().deserialize("&c玩家 " + target.getName() + " 不在排队队列中，或已在第一位")));
+            sender.sendMessage(languageManager.getMessage("queue-promote-fail", "player", target.getName()));
         }
     }
 
@@ -184,13 +190,12 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
             }
             if (totalMax > 0) {
                 double totalRatio = (double) totalOnline / totalMax;
-                sender.sendMessage(LegacyComponentSerializer.legacySection().serialize(LegacyComponentSerializer.legacyAmpersand().deserialize("&6总在线: " + totalOnline + "/" + totalMax
-                        + " (" + String.format("%.1f", totalRatio * 100) + "%)")));
+                sender.sendMessage(languageManager.getMessage("total-online", "online", String.valueOf(totalOnline), "max", String.valueOf(totalMax), "ratio", String.format("%.1f", totalRatio * 100)));
                 sender.sendMessage(languageManager.getMessage("status-threshold", "threshold", String.format("%.1f", threshold * 100)));
                 sender.sendMessage(languageManager.getMessage(totalRatio >= threshold ? "status-queue-paused" : "status-queue-normal"));
             }
         }
-        sender.sendMessage(LegacyComponentSerializer.legacySection().serialize(LegacyComponentSerializer.legacyAmpersand().deserialize("&b负载均衡策略: " + balanceStrategy)));
+        sender.sendMessage(languageManager.getMessage("balance-strategy", "strategy", balanceStrategy));
         sender.sendMessage(languageManager.getMessage("status-queue-size", "size", String.valueOf(listener.getQueueSize())));
         sender.sendMessage(languageManager.getMessage("status-footer"));
     }
@@ -214,7 +219,38 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
         plugin.reloadConfig();
         plugin.saveDefaultConfig();
         languageManager.reload();
+        listener.reloadPriority();
         sender.sendMessage(languageManager.getMessage("reloaded"));
+    }
+
+    private void handlePause(CommandSender sender) {
+        if (!sender.hasPermission("loginqueue2.admin.pause")) {
+            sender.sendMessage(languageManager.getMessage("no-permission"));
+            return;
+        }
+
+        if (listener.isQueuePaused()) {
+            sender.sendMessage(languageManager.getMessage("queue-already-paused"));
+            return;
+        }
+
+        listener.pauseQueue();
+        sender.sendMessage(languageManager.getMessage("queue-paused"));
+    }
+
+    private void handleResume(CommandSender sender) {
+        if (!sender.hasPermission("loginqueue2.admin.pause")) {
+            sender.sendMessage(languageManager.getMessage("no-permission"));
+            return;
+        }
+
+        if (!listener.isQueuePaused()) {
+            sender.sendMessage(languageManager.getMessage("queue-already-running"));
+            return;
+        }
+
+        listener.resumeQueue();
+        sender.sendMessage(languageManager.getMessage("queue-resumed-admin"));
     }
 
     private void handleDebug(CommandSender sender) {
@@ -225,7 +261,7 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
 
         boolean newState = !plugin.isDebug();
         plugin.setDebug(newState);
-        sender.sendMessage(LegacyComponentSerializer.legacySection().serialize(LegacyComponentSerializer.legacyAmpersand().deserialize("&a[LoginQueue2Limbo] 调试模式已" + (newState ? "开启" : "关闭"))));
+        sender.sendMessage(newState ? languageManager.getMessage("debug-mode-on") : languageManager.getMessage("debug-mode-off"));
     }
 
     private void handleInfo(CommandSender sender) {
@@ -298,6 +334,8 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
         sender.sendMessage(languageManager.getMessage("help-status"));
         sender.sendMessage(languageManager.getMessage("help-refresh"));
         sender.sendMessage(languageManager.getMessage("help-reload"));
+        sender.sendMessage(languageManager.getMessage("help-pause"));
+        sender.sendMessage(languageManager.getMessage("help-resume"));
         sender.sendMessage(languageManager.getMessage("help-info"));
         sender.sendMessage(languageManager.getMessage("help-help"));
         sender.sendMessage(languageManager.getMessage("help-footer"));
@@ -325,7 +363,7 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
             return result;
         }
         if (subArgs.length == 1) {
-            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "refresh", "reload", "info", "help");
+            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "refresh", "reload", "pause", "resume", "info", "help");
             List<String> result = new ArrayList<>();
             for (String sub : subs) {
                 if (sub.startsWith(subArgs[0].toLowerCase())) {

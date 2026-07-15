@@ -16,6 +16,7 @@ import top.mcocet.loginqueue2.LoginQueue2;
 import top.mcocet.loginqueue2.auth.AuthManager;
 import top.mcocet.loginqueue2.auth.AuthRestrictionListener;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
+import top.mcocet.loginqueue2.queue.PriorityManager;
 import top.mcocet.loginqueue2.util.LanguageManager;
 
 import java.util.*;
@@ -26,15 +27,16 @@ public class PlayerJoinListener implements Listener {
     private final BungeeMessenger messenger;
     private final AuthManager authManager;
     private final AuthRestrictionListener authRestrictionListener;
-    private final List<String> priorityList;
-    private final int defaultPriority;
     private final double threshold;
     private final LanguageManager languageManager;
+    private final PriorityManager priorityManager;
 
-    // 等待队列：按优先级排序
+    // 等待队列：按优先级排序，同优先级按入队时间先后（FIFO）
     private final PriorityQueue<QueueEntry> waitingQueue;
     // 已允许进入的玩家
     private final Set<UUID> allowedPlayers = new HashSet<>();
+    // 队列手动暂停状态
+    private boolean queuePaused = false;
 
     public PlayerJoinListener(LoginQueue2 plugin, BungeeMessenger messenger,
                               AuthManager authManager, AuthRestrictionListener authRestrictionListener) {
@@ -43,13 +45,46 @@ public class PlayerJoinListener implements Listener {
         this.authManager = authManager;
         this.authRestrictionListener = authRestrictionListener;
         FileConfiguration config = plugin.getConfig();
-        this.priorityList = config.getStringList("queue.priority");
-        this.defaultPriority = config.getInt("queue.default-priority", 0);
         this.threshold = Math.max(0.0, Math.min(1.0, config.getDouble("queue.threshold", 0.8)));
         this.languageManager = plugin.getLanguageManager();
+        this.priorityManager = new PriorityManager(plugin);
 
-        // 优先级数字越大越靠前
-        this.waitingQueue = new PriorityQueue<>(Collections.reverseOrder(Comparator.comparingInt(QueueEntry::getPriority)));
+        // 优先级数字越大越靠前，同优先级按时间戳升序（先来的在前）
+        this.waitingQueue = new PriorityQueue<>(
+                Comparator.comparingInt(QueueEntry::getPriority).reversed()
+                        .thenComparingLong(QueueEntry::getTimestamp)
+        );
+    }
+
+    /**
+     * 重新加载优先级配置
+     */
+    public void reloadPriority() {
+        priorityManager.reload();
+    }
+
+    /**
+     * 手动暂停队列处理
+     */
+    public void pauseQueue() {
+        queuePaused = true;
+        notifyWaitingPlayers(languageManager.getMessage("queue-paused-manual"));
+    }
+
+    /**
+     * 手动恢复队列处理
+     */
+    public void resumeQueue() {
+        queuePaused = false;
+        notifyWaitingPlayers(languageManager.getMessage("queue-resumed"));
+        processQueue();
+    }
+
+    /**
+     * 检查队列是否被手动暂停
+     */
+    public boolean isQueuePaused() {
+        return queuePaused;
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -63,6 +98,11 @@ public class PlayerJoinListener implements Listener {
         // 设置玩家出生点
         teleportToSpawn(player);
 
+        // 显示服务器状态计分板
+        if (plugin.getScoreboardManager() != null && plugin.getScoreboardManager().isEnabled()) {
+            plugin.getScoreboardManager().showScoreboard(player);
+        }
+
         // 如果已经允许进入，直接放行
         if (allowedPlayers.contains(uuid)) {
             return;
@@ -72,9 +112,9 @@ public class PlayerJoinListener implements Listener {
         if (authManager.isEnabled()) {
             authRestrictionListener.removeAuthenticated(uuid);
             if (!authManager.isRegistered(player.getName())) {
-                player.sendMessage(ChatColor.YELLOW + "欢迎来到服务器！请使用 /register <密码> <确认密码> 注册账号");
+                player.sendMessage(languageManager.getMessage("auth-welcome-register"));
             } else {
-                player.sendMessage(ChatColor.YELLOW + "请使用 /login <密码> 登录");
+                player.sendMessage(languageManager.getMessage("auth-welcome-login"));
             }
             return;
         }
@@ -102,8 +142,8 @@ public class PlayerJoinListener implements Listener {
                     }
 
                     // 计算玩家优先级并入队
-                    int priority = calculatePriority(player);
-                    waitingQueue.offer(new QueueEntry(uuid, priority));
+                    int priority = priorityManager.calculatePriority(player);
+                    waitingQueue.offer(new QueueEntry(uuid, priority, System.currentTimeMillis()));
 
                     // 通知玩家排队位置
                     sendQueueStatus(player, uuid);
@@ -133,8 +173,8 @@ public class PlayerJoinListener implements Listener {
                         }
 
                         // 计算玩家优先级并入队
-                        int priority = calculatePriority(player);
-                        waitingQueue.offer(new QueueEntry(uuid, priority));
+                        int priority = priorityManager.calculatePriority(player);
+                        waitingQueue.offer(new QueueEntry(uuid, priority, System.currentTimeMillis()));
 
                         // 通知玩家排队位置
                         sendQueueStatus(player, uuid);
@@ -173,35 +213,18 @@ public class PlayerJoinListener implements Listener {
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
-        UUID uuid = event.getPlayer().getUniqueId();
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        // 隐藏计分板
+        if (plugin.getScoreboardManager() != null) {
+            plugin.getScoreboardManager().hideScoreboard(player);
+        }
         allowedPlayers.remove(uuid);
         waitingQueue.removeIf(entry -> entry.getUuid().equals(uuid));
         if (authRestrictionListener != null) {
             authRestrictionListener.removeAuthenticated(uuid);
         }
         processQueue();
-    }
-
-    private int calculatePriority(Player player) {
-        for (int i = 0; i < priorityList.size(); i++) {
-            String rule = priorityList.get(i);
-            if (rule == null || rule.isEmpty()) continue;
-
-            String[] parts = rule.split(":", 2);
-            if (parts.length != 2) continue;
-
-            String type = parts[0].toLowerCase();
-            String value = parts[1];
-
-            if ("permission".equals(type) && player.hasPermission(value)) {
-                // 列表中越靠前，优先级越高（数值越大）
-                return priorityList.size() - i;
-            }
-            if ("name".equals(type) && player.getName().equalsIgnoreCase(value)) {
-                return priorityList.size() - i;
-            }
-        }
-        return defaultPriority;
     }
 
     private int getPosition(UUID uuid) {
@@ -232,7 +255,7 @@ public class PlayerJoinListener implements Listener {
         // 认证模式下，必须先通过登录认证才能入队
         if (authManager.isEnabled() && authRestrictionListener != null) {
             if (!authRestrictionListener.isAuthenticated(player.getUniqueId())) {
-                player.sendMessage(ChatColor.RED + "请先登录后再加入队列");
+                player.sendMessage(languageManager.getMessage("auth-please-login-first"));
                 return;
             }
         }
@@ -242,8 +265,8 @@ public class PlayerJoinListener implements Listener {
             messenger.notifyLoginSuccess(player);
         }
 
-        int priority = calculatePriority(player);
-        waitingQueue.offer(new QueueEntry(player.getUniqueId(), priority));
+        int priority = priorityManager.calculatePriority(player);
+        waitingQueue.offer(new QueueEntry(player.getUniqueId(), priority, System.currentTimeMillis()));
         sendQueueStatus(player, player.getUniqueId());
         processQueue();
     }
@@ -331,7 +354,7 @@ public class PlayerJoinListener implements Listener {
         try {
             gameMode = GameMode.valueOf(modeName.toUpperCase());
         } catch (IllegalArgumentException | NullPointerException e) {
-            plugin.getLogger().warning("配置的游戏模式 " + modeName + " 无效，使用默认 ADVENTURE 模式。");
+            plugin.getLogger().warning(languageManager.getLogMessage("invalid-gamemode", "mode", modeName));
             gameMode = GameMode.ADVENTURE;
         }
 
@@ -387,15 +410,20 @@ public class PlayerJoinListener implements Listener {
         }
 
         if (plugin.isDebug()) {
-            plugin.getLogger().info("处理队列: 有在线服务器=" + anyOnline
-                    + " 总在线=" + totalOnline
-                    + " 总容量=" + totalMax
-                    + " 队列大小=" + waitingQueue.size());
+            plugin.getLogger().info(languageManager.getLogMessage("queue-processing", "anyOnline", String.valueOf(anyOnline), "totalOnline", String.valueOf(totalOnline), "totalMax", String.valueOf(totalMax), "queueSize", String.valueOf(waitingQueue.size())));
+        }
+
+        // 手动暂停队列
+        if (queuePaused) {
+            if (plugin.isDebug()) {
+                plugin.getLogger().info(languageManager.getLogMessage("queue-paused-manual-log"));
+            }
+            return;
         }
 
         if (!anyOnline) {
             if (plugin.isDebug()) {
-                plugin.getLogger().info("所有主服务器离线，暂停处理队列");
+                plugin.getLogger().info(languageManager.getLogMessage("queue-all-offline"));
             }
             return;
         }
@@ -408,7 +436,7 @@ public class PlayerJoinListener implements Listener {
 
         int availableSlots = Math.max(0, totalMax - totalOnline);
         if (plugin.isDebug()) {
-            plugin.getLogger().info("可用槽位: " + availableSlots);
+            plugin.getLogger().info(languageManager.getLogMessage("queue-available-slots", "slots", String.valueOf(availableSlots)));
         }
 
         while (availableSlots > 0 && !waitingQueue.isEmpty()) {
@@ -423,7 +451,7 @@ public class PlayerJoinListener implements Listener {
             allowedPlayers.add(entry.getUuid());
             player.sendMessage(languageManager.getMessage("entering"));
             if (plugin.isDebug()) {
-                plugin.getLogger().info("放行玩家: " + player.getName());
+                plugin.getLogger().info(languageManager.getLogMessage("queue-player-allowed", "player", player.getName()));
             }
             messenger.connectToOptimalServer(player);
             availableSlots--;
@@ -442,10 +470,12 @@ public class PlayerJoinListener implements Listener {
     private static class QueueEntry {
         private final UUID uuid;
         private final int priority;
+        private final long timestamp;
 
-        QueueEntry(UUID uuid, int priority) {
+        QueueEntry(UUID uuid, int priority, long timestamp) {
             this.uuid = uuid;
             this.priority = priority;
+            this.timestamp = timestamp;
         }
 
         UUID getUuid() {
@@ -454,6 +484,10 @@ public class PlayerJoinListener implements Listener {
 
         int getPriority() {
             return priority;
+        }
+
+        long getTimestamp() {
+            return timestamp;
         }
     }
 }

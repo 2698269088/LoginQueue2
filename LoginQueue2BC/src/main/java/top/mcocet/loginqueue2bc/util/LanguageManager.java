@@ -1,12 +1,11 @@
-package top.mcocet.loginqueue2limbo.util;
+package top.mcocet.loginqueue2bc.util;
 
-import com.loohp.limbo.Limbo;
-import com.loohp.limbo.file.FileConfiguration;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import top.mcocet.loginqueue2limbo.LoginQueue2Limbo;
+import net.md_5.bungee.config.Configuration;
+import net.md_5.bungee.config.ConfigurationProvider;
+import net.md_5.bungee.config.YamlConfiguration;
+import top.mcocet.loginqueue2bc.LoginQueue2BC;
 
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -15,18 +14,18 @@ import java.util.Map;
 
 public class LanguageManager {
 
-    private final LoginQueue2Limbo plugin;
-    private FileConfiguration langConfig;
+    private final LoginQueue2BC plugin;
+    private Configuration langConfig;
     private final Map<String, String> cache = new HashMap<>();
 
-    public LanguageManager(LoginQueue2Limbo plugin) {
+    public LanguageManager(LoginQueue2BC plugin) {
         this.plugin = plugin;
         loadLanguage();
     }
 
     public void loadLanguage() {
         cache.clear();
-        String language = plugin.getConfigValueString("language", "zh_CN");
+        String language = plugin.getConfig().getString("language", "zh_CN");
         File langFolder = new File(plugin.getDataFolder(), "lang");
         if (!langFolder.exists()) {
             langFolder.mkdirs();
@@ -34,24 +33,38 @@ public class LanguageManager {
 
         File langFile = new File(langFolder, language + ".yml");
         if (!langFile.exists()) {
-            plugin.saveDefaultConfig();
+            try (InputStream in = plugin.getResourceAsStream("lang/" + language + ".yml")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, langFile.toPath());
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("无法保存默认语言文件: " + e.getMessage());
+            }
         }
 
         if (langFile.exists()) {
             try {
-                langConfig = new FileConfiguration(langFile);
-            } catch (IOException e) {
-                e.printStackTrace();
-                langConfig = new FileConfiguration((InputStream) null);
+                langConfig = ConfigurationProvider.getProvider(YamlConfiguration.class).load(langFile);
+            } catch (Exception e) {
+                plugin.getLogger().warning("无法加载语言文件: " + e.getMessage());
+                loadDefaultLanguage();
             }
         } else {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] Language file lang/" + language + ".yml not found, using built-in default language.");
-            InputStream defaultStream = getClass().getClassLoader().getResourceAsStream("lang/zh_CN.yml");
+            loadDefaultLanguage();
+        }
+    }
+
+    private void loadDefaultLanguage() {
+        try (InputStream defaultStream = plugin.getResourceAsStream("lang/zh_CN.yml")) {
             if (defaultStream != null) {
-                langConfig = new FileConfiguration(new InputStreamReader(defaultStream, StandardCharsets.UTF_8));
+                langConfig = ConfigurationProvider.getProvider(YamlConfiguration.class).load(
+                    new InputStreamReader(defaultStream, StandardCharsets.UTF_8));
             } else {
-                langConfig = new FileConfiguration((InputStream) null);
+                langConfig = new Configuration();
             }
+        } catch (Exception e) {
+            plugin.getLogger().warning("无法加载默认语言文件: " + e.getMessage());
+            langConfig = new Configuration();
         }
     }
 
@@ -60,11 +73,8 @@ public class LanguageManager {
             return cache.get(key);
         }
 
-        String message = langConfig.get("messages." + key, String.class);
-        if (message == null) {
-            message = "&cMissing message: " + key;
-        }
-        message = LegacyComponentSerializer.legacySection().serialize(LegacyComponentSerializer.legacyAmpersand().deserialize(message));
+        String message = langConfig.getString("messages." + key, "&cMissing message: " + key);
+        message = net.md_5.bungee.api.ChatColor.translateAlternateColorCodes('&', message);
         cache.put(key, message);
         return message;
     }
@@ -93,10 +103,7 @@ public class LanguageManager {
             return cache.get("log." + key);
         }
 
-        String message = langConfig.get("log-messages." + key, String.class);
-        if (message == null) {
-            message = "Missing log message: " + key;
-        }
+        String message = langConfig.getString("log-messages." + key, "Missing log message: " + key);
         cache.put("log." + key, message);
         return message;
     }

@@ -16,6 +16,7 @@ import top.mcocet.loginqueue2.listener.PlayerJoinListener;
 import top.mcocet.loginqueue2.listener.PlayerMoveListener;
 import top.mcocet.loginqueue2.listener.PlayerRestrictionListener;
 import top.mcocet.loginqueue2.listener.QueueItemListener;
+import top.mcocet.loginqueue2.scoreboard.ServerScoreboardManager;
 
 public final class LoginQueue2 extends JavaPlugin {
 
@@ -24,6 +25,7 @@ public final class LoginQueue2 extends JavaPlugin {
     private LanguageManager languageManager;
     private AuthManager authManager;
     private AuthRestrictionListener authRestrictionListener;
+    private ServerScoreboardManager scoreboardManager;
     private boolean debug;
 
     @Override
@@ -35,13 +37,15 @@ public final class LoginQueue2 extends JavaPlugin {
 
         boolean enableBungeeExtension = getConfig().getBoolean("enable-bungee-extension", true);
         this.messenger = new BungeeMessenger(this, enableBungeeExtension);
-        getLogger().info("BungeeCord 通道扩展: " + (enableBungeeExtension ? "已启用" : "已禁用") + "。");
+        getLogger().info(languageManager.getLogMessage("bungee-extension-status", "status", languageManager.getLogMessage(enableBungeeExtension ? "enabled" : "disabled")));
         this.authManager = new AuthManager(this);
         this.authRestrictionListener = new AuthRestrictionListener(this, authManager);
         getServer().getPluginManager().registerEvents(authRestrictionListener, this);
 
         this.playerJoinListener = new PlayerJoinListener(this, messenger, authManager, authRestrictionListener);
         getServer().getPluginManager().registerEvents(playerJoinListener, this);
+
+        this.scoreboardManager = new ServerScoreboardManager(this, messenger);
 
         getServer().getPluginManager().registerEvents(new PlayerRestrictionListener(this, playerJoinListener, playerJoinListener.getAllowedPlayers()), this);
 
@@ -78,14 +82,26 @@ public final class LoginQueue2 extends JavaPlugin {
 
         startRefreshTask();
 
+        // 延迟检查代理端插件版本（给网络连接一点初始化时间）
+        if (enableBungeeExtension) {
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    if (isEnabled() && messenger != null) {
+                        messenger.requestProxyVersion();
+                    }
+                }
+            }.runTaskLater(this, 200L); // 10秒后检查
+        }
+
         logStartupConfig();
 
         if (authManager.isEnabled()) {
-            getLogger().info("认证系统已启用。");
+            getLogger().info(languageManager.getLogMessage("auth-enabled"));
         } else {
-            getLogger().info("认证系统已禁用。");
+            getLogger().info(languageManager.getLogMessage("auth-disabled"));
         }
-        getLogger().info("LoginQueue2 已启用，登录队列系统已加载。");
+        getLogger().info(languageManager.getLogMessage("plugin-enabled"));
     }
 
     private void startRefreshTask() {
@@ -103,20 +119,15 @@ public final class LoginQueue2 extends JavaPlugin {
         getLogger().info("");
     }
     private void logStartupConfig() {
-        getLogger().info("主服务器: " + getConfig().getString("queue.main-server", "main"));
-        getLogger().info("最大在线: " + getConfig().getInt("queue.max-online", 50));
-        getLogger().info("连接阈值: " + getConfig().getDouble("queue.threshold", 0.8));
-        getLogger().info("限制移动: " + getConfig().getBoolean("queue.restrict-movement", true));
-        getLogger().info("性能节省模式: " + getConfig().getBoolean("queue.performance-mode", true));
-        getLogger().info("限制活动范围: " + getConfig().getBoolean("queue.restrict-range", false)
-                + " (范围: " + getConfig().getDouble("queue.range-limit", 10.0) + " 方块)");
-        getLogger().info("登录点保护: " + getConfig().getBoolean("queue.spawn-protection", true)
-                + " (半径: " + getConfig().getDouble("queue.spawn-protection-radius", 0.0) + " 方块)");
-        getLogger().info("出生点世界: " + getConfig().getString("queue.spawn.world", "world")
-                + " (" + getConfig().getDouble("queue.spawn.x", 0.0)
-                + ", " + getConfig().getDouble("queue.spawn.y", 64.0)
-                + ", " + getConfig().getDouble("queue.spawn.z", 0.0) + ")");
-        getLogger().info("BungeeCord 通道扩展: " + getConfig().getBoolean("enable-bungee-extension", true));
+        getLogger().info(languageManager.getLogMessage("config-main-server", "server", getConfig().getString("queue.main-server", "main")));
+        getLogger().info(languageManager.getLogMessage("config-max-online", "max", String.valueOf(getConfig().getInt("queue.max-online", 50))));
+        getLogger().info(languageManager.getLogMessage("config-threshold", "threshold", String.valueOf(getConfig().getDouble("queue.threshold", 0.8))));
+        getLogger().info(languageManager.getLogMessage("config-restrict-movement", "enabled", String.valueOf(getConfig().getBoolean("queue.restrict-movement", true))));
+        getLogger().info(languageManager.getLogMessage("config-performance-mode", "enabled", String.valueOf(getConfig().getBoolean("queue.performance-mode", true))));
+        getLogger().info(languageManager.getLogMessage("config-restrict-range", "enabled", String.valueOf(getConfig().getBoolean("queue.restrict-range", false)), "range", String.valueOf(getConfig().getDouble("queue.range-limit", 10.0))));
+        getLogger().info(languageManager.getLogMessage("config-spawn-protection", "enabled", String.valueOf(getConfig().getBoolean("queue.spawn-protection", true)), "radius", String.valueOf(getConfig().getDouble("queue.spawn-protection-radius", 0.0))));
+        getLogger().info(languageManager.getLogMessage("config-spawn-world", "world", getConfig().getString("queue.spawn.world", "world"), "x", String.valueOf(getConfig().getDouble("queue.spawn.x", 0.0)), "y", String.valueOf(getConfig().getDouble("queue.spawn.y", 64.0)), "z", String.valueOf(getConfig().getDouble("queue.spawn.z", 0.0))));
+        getLogger().info(languageManager.getLogMessage("config-bungee-extension", "enabled", String.valueOf(getConfig().getBoolean("enable-bungee-extension", true))));
         logServerStatus();
     }
 
@@ -128,9 +139,16 @@ public final class LoginQueue2 extends JavaPlugin {
         if (all.isEmpty()) {
             return;
         }
-        getLogger().info("当前已缓存子服务器状态:");
+        getLogger().info(languageManager.getLogMessage("cached-server-status"));
         for (BungeeMessenger.ServerStatus status : all.values()) {
-            getLogger().info("  " + status);
+            getLogger().info(languageManager.getLogMessage("server-status-format",
+                    "server", status.getServerName(),
+                    "online", String.valueOf(status.getOnlinePlayers()),
+                    "max", String.valueOf(status.getMaxPlayers()),
+                    "tps", String.format("%.1f", status.getTps()),
+                    "usedMemory", String.valueOf(status.getUsedMemory()),
+                    "maxMemory", String.valueOf(status.getMaxMemory()),
+                    "status", status.isOnline() ? languageManager.getLogMessage("online") : languageManager.getLogMessage("offline")));
         }
     }
 
@@ -152,13 +170,16 @@ public final class LoginQueue2 extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (scoreboardManager != null) {
+            scoreboardManager.shutdown();
+        }
         if (messenger != null) {
             messenger.shutdown();
         }
         if (authManager != null) {
             authManager.close();
         }
-        getLogger().info("LoginQueue2 已禁用。");
+        getLogger().info(languageManager.getLogMessage("plugin-disabled"));
     }
 
     public BungeeMessenger getMessenger() {
@@ -175,6 +196,10 @@ public final class LoginQueue2 extends JavaPlugin {
 
     public AuthRestrictionListener getAuthRestrictionListener() {
         return authRestrictionListener;
+    }
+
+    public ServerScoreboardManager getScoreboardManager() {
+        return scoreboardManager;
     }
 
     public boolean isDebug() {

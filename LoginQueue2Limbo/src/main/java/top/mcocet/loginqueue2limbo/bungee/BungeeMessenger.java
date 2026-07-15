@@ -10,6 +10,7 @@ import com.loohp.limbo.events.Listener;
 import com.loohp.limbo.player.Player;
 import top.mcocet.loginqueue2limbo.LoginQueue2Limbo;
 import top.mcocet.loginqueue2limbo.udp.UDPClient;
+import top.mcocet.loginqueue2limbo.util.LanguageManager;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -18,14 +19,14 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class BungeeMessenger implements Listener {
+
+    /** 协议版本号：用于跨插件通信版本兼容性检查 */
+    public static final String PROTOCOL_VERSION = "1.4";
 
     /** 自定义消息通道：用于通知代理端将指定玩家转移到目标服务器 */
     public static final String CHANNEL_CONNECT_OTHER = "loginqueue2:connectother";
@@ -39,6 +40,7 @@ public class BungeeMessenger implements Listener {
     public static final String CHANNEL_BUNGEE_CORD = "BungeeCord";
 
     private final LoginQueue2Limbo plugin;
+    private final LanguageManager languageManager;
     private final String mainServer;
     private final boolean enabled;
 
@@ -57,12 +59,16 @@ public class BungeeMessenger implements Listener {
     // 轮询索引（用于 ROUND_ROBIN 策略）
     private final java.util.concurrent.atomic.AtomicInteger roundRobinIndex = new java.util.concurrent.atomic.AtomicInteger(0);
 
+    // 记录已报告的版本不匹配信息（避免重复日志）
+    private final java.util.Set<String> reportedVersionMismatches = ConcurrentHashMap.newKeySet();
+
     public BungeeMessenger(LoginQueue2Limbo plugin) {
         this(plugin, true);
     }
 
     public BungeeMessenger(LoginQueue2Limbo plugin, boolean enabled) {
         this.plugin = plugin;
+        this.languageManager = plugin.getLanguageManager();
         this.enabled = enabled;
         this.mainServer = plugin.getConfigValueString("queue.main-server", "main");
         this.udpEnabled = plugin.getConfigValueBoolean("udp-sync.enabled", false);
@@ -79,19 +85,23 @@ public class BungeeMessenger implements Listener {
         return plugin.isDebug();
     }
 
+    private void log(String message) {
+        Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("plugin-prefix") + " " + message);
+    }
+
     private void initUDPClients() {
         String plannedKey = plugin.getConfigValueString("udp-sync.planned-key", "");
         int udpTimeout = plugin.getConfigValueInt("udp-sync.timeout", 3000);
 
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 初始化开始，planned-key: " + (plannedKey != null && !plannedKey.isEmpty() ? "已配置" : "未配置") + "，超时: " + udpTimeout + "ms");
+            log(languageManager.getLogMessage("udp-init-start", "plannedKey", plannedKey != null && !plannedKey.isEmpty() ? languageManager.getLogMessage("configured") : languageManager.getLogMessage("not-configured"), "timeout", String.valueOf(udpTimeout)));
         }
 
         // 多服务器模式 - 支持 YAML 列表格式
         java.util.List<Map<?, ?>> serversList = plugin.getConfigValueMapList("udp-sync.servers");
         if (serversList != null && !serversList.isEmpty()) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 多服务器模式，配置数量: " + serversList.size());
+                log(languageManager.getLogMessage("udp-multi-server-mode", "count", String.valueOf(serversList.size())));
             }
             int index = 0;
             for (Map<?, ?> serverMap : serversList) {
@@ -106,14 +116,14 @@ public class BungeeMessenger implements Listener {
                 String secretKey = keyObj != null ? String.valueOf(keyObj) : "";
 
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 正在初始化客户端 [" + serverName + "] -> " + host + ":" + port + (gamePort > 0 ? " (MSLP端口:" + gamePort + ")" : ""));
+                    log(languageManager.getLogMessage("udp-init-client", "server", serverName, "host", host, "port", String.valueOf(port), "gamePort", gamePort > 0 ? String.valueOf(gamePort) : ""));
                 }
                 UDPClient client = new UDPClient(plugin, serverName, host, port, gamePort, udpTimeout, secretKey, plannedKey);
                 if (client.init()) {
                     udpClients.add(client);
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 同步已配置 [" + serverName + "]: " + host + ":" + port);
+                    log(languageManager.getLogMessage("udp-sync-configured", "server", serverName, "host", host, "port", String.valueOf(port)));
                 } else {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 客户端 [" + serverName + "] 初始化失败，已跳过。");
+                    log(languageManager.getLogMessage("udp-client-init-failed", "server", serverName));
                 }
             }
         }
@@ -121,7 +131,7 @@ public class BungeeMessenger implements Listener {
         // 兼容旧配置（单服务器模式）
         if (udpClients.isEmpty()) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 单服务器模式（兼容旧配置）");
+                log(languageManager.getLogMessage("udp-single-server-mode"));
             }
             String udpHost = plugin.getConfigValueString("udp-sync.host", "127.0.0.1");
             int udpPort = plugin.getConfigValueInt("udp-sync.port", 25566);
@@ -129,14 +139,14 @@ public class BungeeMessenger implements Listener {
             UDPClient client = new UDPClient(plugin, mainServer, udpHost, udpPort, udpTimeout, secretKey, plannedKey);
             if (client.init()) {
                 udpClients.add(client);
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 同步已配置（单服务器模式）: " + udpHost + ":" + udpPort);
+                log(languageManager.getLogMessage("udp-sync-configured-single", "host", udpHost, "port", String.valueOf(udpPort)));
             } else {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 客户端（单服务器模式）初始化失败。");
+                log(languageManager.getLogMessage("udp-client-init-failed-single"));
             }
         }
 
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 初始化完成，成功客户端数: " + udpClients.size());
+            log(languageManager.getLogMessage("udp-init-complete", "count", String.valueOf(udpClients.size())));
         }
     }
 
@@ -157,7 +167,7 @@ public class BungeeMessenger implements Listener {
      */
     public void refresh() {
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 开始刷新服务器状态，UDP启用=" + udpEnabled + "，优先级=" + udpPriority);
+            log(languageManager.getLogMessage("refresh-start", "udpEnabled", String.valueOf(udpEnabled), "udpPriority", udpPriority));
         }
 
         // 记录刷新前的时间戳，用于判断本次刷新是否收到新响应
@@ -170,16 +180,16 @@ public class BungeeMessenger implements Listener {
             // MSLP 优先模式
             boolean anySuccess = tryRefreshViaMSLP();
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] MSLP 刷新结果: " + (anySuccess ? "成功" : "失败"));
+                log(languageManager.getLogMessage("mslp-refresh-result", "success", anySuccess ? languageManager.getLogMessage("success") : languageManager.getLogMessage("failed")));
             }
             if (!anySuccess) {
                 if (plugin.isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] MSLP 获取失败，回退到 UDP");
+                    log(languageManager.getLogMessage("mslp-fallback-udp"));
                 }
                 anySuccess = tryRefreshViaUDP();
                 if (!anySuccess && enabled) {
                     if (plugin.isDebug()) {
-                        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 获取失败，回退到 BungeeCord 通道");
+                        log(languageManager.getLogMessage("udp-fallback-bc"));
                     }
                     tryRefreshViaBC();
                 }
@@ -188,12 +198,12 @@ public class BungeeMessenger implements Listener {
             // 优先使用 UDP
             boolean anySuccess = tryRefreshViaUDP();
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 刷新结果: " + (anySuccess ? "成功" : "失败"));
+                log(languageManager.getLogMessage("udp-refresh-result", "success", anySuccess ? languageManager.getLogMessage("success") : languageManager.getLogMessage("failed")));
             }
             if (!anySuccess) {
                 // UDP 失败，回退到 BC 通道
                 if (plugin.isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 获取失败，回退到 BungeeCord 通道");
+                    log(languageManager.getLogMessage("udp-fallback-bc"));
                 }
                 tryRefreshViaBC();
             }
@@ -201,12 +211,12 @@ public class BungeeMessenger implements Listener {
             // 优先使用 BC 通道
             boolean bcSuccess = tryRefreshViaBC();
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] BC 通道刷新结果: " + (bcSuccess ? "成功" : "失败"));
+                log(languageManager.getLogMessage("bc-refresh-result", "success", bcSuccess ? languageManager.getLogMessage("success") : languageManager.getLogMessage("failed")));
             }
             if (!bcSuccess && udpEnabled) {
                 // BC 通道失败，回退到 UDP
                 if (plugin.isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] BungeeCord 通道获取失败，回退到 UDP");
+                    log(languageManager.getLogMessage("bc-fallback-udp"));
                 }
                 tryRefreshViaUDP();
             }
@@ -223,7 +233,7 @@ public class BungeeMessenger implements Listener {
                 ServerStatus oldStatus = serverStatusCache.get(server);
                 if (oldStatus != null && oldStatus.isOnline()) {
                     if (isDebug()) {
-                        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 服务器 " + server + " 的缓存已过期（" + ((now - lastTime) / 1000) + "秒未更新），标记为离线");
+                        log(languageManager.getLogMessage("cache-expired", "server", server, "seconds", String.valueOf((now - lastTime) / 1000)));
                     }
                     serverStatusCache.put(server, new ServerStatus(server, oldStatus.getOnlinePlayers(), oldStatus.getMaxPlayers(), false));
                 }
@@ -231,7 +241,7 @@ public class BungeeMessenger implements Listener {
         }
 
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 刷新完成，当前缓存服务器数: " + serverStatusCache.size());
+            log(languageManager.getLogMessage("refresh-complete", "count", String.valueOf(serverStatusCache.size())));
         }
     }
 
@@ -245,14 +255,14 @@ public class BungeeMessenger implements Listener {
     private boolean tryRefreshViaMSLP() {
         boolean anyDirectSuccess = false;
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 通过 MSLP 刷新，客户端数量: " + udpClients.size());
+            log(languageManager.getLogMessage("mslp-refresh-start", "count", String.valueOf(udpClients.size())));
         }
         for (UDPClient client : udpClients) {
             int gamePort = client.getGamePort();
             if (gamePort > 0) {
                 // 配置了 game-port，直接执行 MSLP
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] MSLP 直接请求服务器信息: [" + client.getServerName() + "] 端口=" + gamePort);
+                    log(languageManager.getLogMessage("mslp-direct-request", "server", client.getServerName(), "port", String.valueOf(gamePort)));
                 }
                 ServerStatus status = client.requestServerInfoViaMSLP(null, gamePort);
                 if (status != null) {
@@ -260,17 +270,17 @@ public class BungeeMessenger implements Listener {
                     lastServerInfoTimeMap.put(status.getServerName(), System.currentTimeMillis());
                     anyDirectSuccess = true;
                     if (isDebug()) {
-                        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] MSLP 直接获取成功: " + status);
+                        log(languageManager.getLogMessage("mslp-direct-success", "status", status.toString()));
                     }
                 } else {
                     if (isDebug()) {
-                        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] MSLP 直接获取失败: [" + client.getServerName() + "]");
+                        log(languageManager.getLogMessage("mslp-direct-failed", "server", client.getServerName()));
                     }
                 }
             } else {
                 // 未配置 game-port，通过 BungeeCord ServerIP 获取端口
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] MSLP 未配置 game-port，通过 BungeeCord ServerIP 获取: [" + client.getServerName() + "]");
+                    log(languageManager.getLogMessage("mslp-no-game-port", "server", client.getServerName()));
                 }
                 requestServerIPViaBC(client.getServerName());
             }
@@ -302,11 +312,11 @@ public class BungeeMessenger implements Listener {
     private boolean tryRefreshViaUDP() {
         boolean anySuccess = false;
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 通过 UDP 刷新，客户端数量: " + udpClients.size());
+            log(languageManager.getLogMessage("udp-refresh-start", "count", String.valueOf(udpClients.size())));
         }
         for (UDPClient client : udpClients) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 请求服务器信息: [" + client.getServerName() + "]");
+                log(languageManager.getLogMessage("udp-request-server-info", "server", client.getServerName()));
             }
             ServerStatus status = client.requestServerInfo();
             if (status != null) {
@@ -314,11 +324,11 @@ public class BungeeMessenger implements Listener {
                 lastServerInfoTimeMap.put(status.getServerName(), System.currentTimeMillis());
                 anySuccess = true;
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 获取成功: " + status);
+                    log(languageManager.getLogMessage("udp-get-success", "status", status.toString()));
                 }
             } else {
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] UDP 获取失败: [" + client.getServerName() + "]");
+                    log(languageManager.getLogMessage("udp-get-failed", "server", client.getServerName()));
                 }
             }
         }
@@ -342,25 +352,25 @@ public class BungeeMessenger implements Listener {
         }
 
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] tryRefreshViaBC: 需要请求的服务器=" + serversToRequest + ", enabled=" + enabled);
+            log(languageManager.getLogMessage("bc-refresh-servers", "servers", serversToRequest.toString(), "enabled", String.valueOf(enabled)));
         }
 
         Player player = getAnyOnlinePlayer();
         if (player == null) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] tryRefreshViaBC: 没有在线玩家，无法发送请求");
+                log(languageManager.getLogMessage("bc-no-online-player"));
             }
             return !serverStatusCache.isEmpty();
         }
 
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] tryRefreshViaBC: 使用玩家=" + player.getName() + " 发送请求");
+            log(languageManager.getLogMessage("bc-using-player", "player", player.getName()));
         }
 
         if (enabled) {
             // 开启BC扩展时，使用自定义通道
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] tryRefreshViaBC: 使用自定义通道 loginqueue2:serverinfo 发送请求");
+                log(languageManager.getLogMessage("bc-custom-channel"));
             }
             for (String server : serversToRequest) {
                 requestServerInfo(server);
@@ -368,7 +378,7 @@ public class BungeeMessenger implements Listener {
         } else {
             // 关闭BC扩展时，使用BungeeCord原生ServerIP + Minecraft Server List Ping
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] tryRefreshViaBC: 关闭BC扩展模式，使用BungeeCord原生ServerIP检测服务器状态");
+                log(languageManager.getLogMessage("bc-native-mode"));
             }
             for (String server : serversToRequest) {
                 ByteArrayDataOutput out = ByteStreams.newDataOutput();
@@ -377,10 +387,10 @@ public class BungeeMessenger implements Listener {
                 try {
                     player.sendPluginMessage(CHANNEL_BUNGEE_CORD, out.toByteArray());
                     if (isDebug()) {
-                        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] tryRefreshViaBC: 已发送ServerIP请求，目标服务器=" + server);
+                        log(languageManager.getLogMessage("bc-serverip-sent", "server", server));
                     }
                 } catch (IOException e) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] tryRefreshViaBC: 发送ServerIP请求失败: " + e.getMessage());
+                    log(languageManager.getLogMessage("bc-serverip-failed", "error", e.getMessage()));
                     e.printStackTrace();
                 }
             }
@@ -390,7 +400,7 @@ public class BungeeMessenger implements Listener {
         // 注意：这不代表本次请求一定成功，只是表示通道可能可用
         boolean result = !serverStatusCache.isEmpty();
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] tryRefreshViaBC: 返回结果=" + result + ", 缓存大小=" + serverStatusCache.size());
+            log(languageManager.getLogMessage("bc-result", "result", String.valueOf(result), "cacheSize", String.valueOf(serverStatusCache.size())));
         }
         return result;
     }
@@ -449,7 +459,7 @@ public class BungeeMessenger implements Listener {
     public void connectPlayerToServer(Player player, String server) {
         boolean udpPreferred = udpEnabled && "UDP".equalsIgnoreCase(udpPriority);
         if (udpPreferred) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 发送连接请求(BungeeCord原生): 玩家=" + player.getName() + " 目标服务器=" + server);
+            log(languageManager.getLogMessage("connect-bungee-native", "player", player.getName(), "server", server));
             ByteArrayDataOutput out = ByteStreams.newDataOutput();
             out.writeUTF("Connect");
             out.writeUTF(server);
@@ -459,7 +469,7 @@ public class BungeeMessenger implements Listener {
                 e.printStackTrace();
             }
         } else if (enabled) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 发送连接请求(自定义通道): 玩家=" + player.getName() + " 目标服务器=" + server);
+            log(languageManager.getLogMessage("connect-custom-channel", "player", player.getName(), "server", server));
             ByteArrayDataOutput out = ByteStreams.newDataOutput();
             out.writeUTF(server);
             try {
@@ -469,7 +479,7 @@ public class BungeeMessenger implements Listener {
             }
         } else {
             // 关闭BC扩展时，使用BungeeCord原生Connect通道
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 发送连接请求(BungeeCord原生): 玩家=" + player.getName() + " 目标服务器=" + server);
+            log(languageManager.getLogMessage("connect-bungee-native", "player", player.getName(), "server", server));
             ByteArrayDataOutput out = ByteStreams.newDataOutput();
             out.writeUTF("Connect");
             out.writeUTF(server);
@@ -700,7 +710,7 @@ public class BungeeMessenger implements Listener {
         if (mslpPreferred) {
             // MSLP 优先模式下，异步执行 MSLP 检测
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] MSLP 优先模式，异步检测所有 UDP 配置的服务器");
+                log(languageManager.getLogMessage("mslp-priority-mode"));
             }
             for (UDPClient client : udpClients) {
                 int clientGamePort = client.getGamePort();
@@ -729,7 +739,7 @@ public class BungeeMessenger implements Listener {
         } else {
             // 关闭BC扩展时，使用BungeeCord原生ServerIP获取IP和端口，然后Minecraft Server List Ping
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 关闭BC扩展模式，使用BungeeCord原生ServerIP + Minecraft Server List Ping检测主服务器");
+                log(languageManager.getLogMessage("bc-extension-disabled-check"));
             }
             ByteArrayDataOutput out = ByteStreams.newDataOutput();
             out.writeUTF("ServerIP");
@@ -801,7 +811,7 @@ public class BungeeMessenger implements Listener {
         try {
             player.sendPluginMessage(CHANNEL_LOGIN_SUCCESS, out.toByteArray());
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] 发送登录成功通知到代理端: 玩家=" + player.getName());
+                log(languageManager.getLogMessage("login-success-notify", "player", player.getName()));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -862,7 +872,7 @@ public class BungeeMessenger implements Listener {
         Player player = event.getPlayer();
 
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: 通道=" + channel + " 数据长度=" + message.length + " 玩家=" + player.getName());
+            log(languageManager.getLogMessage("plugin-message-received", "channel", channel, "length", String.valueOf(message.length), "player", player.getName()));
         }
 
         if (isBungeeCordChannel(channel)) {
@@ -873,13 +883,13 @@ public class BungeeMessenger implements Listener {
                 subchannel = in.readUTF();
             } catch (Exception e) {
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: BungeeCord通道读取subchannel失败: " + e.getMessage());
+                    log(languageManager.getLogMessage("plugin-message-subchannel-read-failed", "error", e.getMessage()));
                 }
                 return;
             }
 
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: BungeeCord子通道=" + subchannel);
+                log(languageManager.getLogMessage("plugin-message-subchannel", "subchannel", subchannel));
             }
 
             if ("ServerIP".equals(subchannel)) {
@@ -892,13 +902,13 @@ public class BungeeMessenger implements Listener {
                     port = in.readUnsignedShort();
                 } catch (Exception e) {
                     if (isDebug()) {
-                        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: 读取ServerIP响应失败: " + e.getMessage());
+                        log(languageManager.getLogMessage("serverip-response-read-failed", "error", e.getMessage()));
                     }
                     return;
                 }
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] ServerIP: 收到 " + server + " 的地址: " + ip + ":" + port);
+                log(languageManager.getLogMessage("serverip-received", "server", server, "ip", ip, "port", String.valueOf(port)));
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: 启动异步ServerListPing，目标=" + server + " " + ip + ":" + port);
+                    log(languageManager.getLogMessage("plugin-message-async-slp-start", "server", server, "ip", ip, "port", String.valueOf(port)));
                 }
                 // MSLP 优先模式下，通过 UDPClient 执行 MSLP（获取更精确的状态）
                 boolean mslpPreferred = udpEnabled && "MSLP".equalsIgnoreCase(udpPriority);
@@ -908,7 +918,7 @@ public class BungeeMessenger implements Listener {
                     final int targetPort = port;
                     new Thread(() -> {
                         if (isDebug()) {
-                            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] MSLP线程启动: 目标=" + targetServer + " " + targetIp + ":" + targetPort);
+                            log(languageManager.getLogMessage("plugin-message-mslp-thread-start", "server", targetServer, "ip", targetIp, "port", String.valueOf(targetPort)));
                         }
                         UDPClient client = getUDPClientByServerName(targetServer);
                         if (client != null) {
@@ -917,11 +927,11 @@ public class BungeeMessenger implements Listener {
                                 serverStatusCache.put(targetServer, status);
                                 lastServerInfoTimeMap.put(targetServer, System.currentTimeMillis());
                                 if (isDebug()) {
-                                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] MSLP完成: " + targetServer + " 在线，已更新缓存");
+                                    log(languageManager.getLogMessage("plugin-message-mslp-complete-online", "server", targetServer));
                                 }
                             } else {
                                 if (isDebug()) {
-                                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] MSLP完成: " + targetServer + " 离线，已更新缓存");
+                                    log(languageManager.getLogMessage("plugin-message-mslp-complete-offline", "server", targetServer));
                                 }
                             }
                         } else {
@@ -931,11 +941,11 @@ public class BungeeMessenger implements Listener {
                             if (status.isOnline()) {
                                 lastServerInfoTimeMap.put(targetServer, System.currentTimeMillis());
                                 if (isDebug()) {
-                                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] ServerListPing完成: " + targetServer + " 在线，已更新缓存");
+                                    log(languageManager.getLogMessage("slp-complete-online", "server", targetServer));
                                 }
                             } else {
                                 if (isDebug()) {
-                                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] ServerListPing完成: " + targetServer + " 离线，已更新缓存");
+                                    log(languageManager.getLogMessage("slp-complete-offline", "server", targetServer));
                                 }
                             }
                         }
@@ -947,18 +957,18 @@ public class BungeeMessenger implements Listener {
                     final int targetPort = port;
                     new Thread(() -> {
                         if (isDebug()) {
-                            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] ServerListPing线程启动: 目标=" + targetServer + " " + targetIp + ":" + targetPort);
+                            log(languageManager.getLogMessage("slp-thread-start", "server", targetServer, "ip", targetIp, "port", String.valueOf(targetPort)));
                         }
                         ServerStatus status = pingMinecraftServer(targetServer, targetIp, targetPort);
                         serverStatusCache.put(targetServer, status);
                         if (status.isOnline()) {
                             lastServerInfoTimeMap.put(targetServer, System.currentTimeMillis());
                             if (isDebug()) {
-                                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] ServerListPing完成: " + targetServer + " 在线，已更新缓存");
+                                log(languageManager.getLogMessage("slp-complete-online", "server", targetServer));
                             }
                         } else {
                             if (isDebug()) {
-                                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] ServerListPing完成: " + targetServer + " 离线，已更新缓存");
+                                log(languageManager.getLogMessage("slp-complete-offline", "server", targetServer));
                             }
                         }
                     }).start();
@@ -969,7 +979,7 @@ public class BungeeMessenger implements Listener {
 
         if (!enabled) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: enabled=false，忽略自定义通道消息");
+                log(languageManager.getLogMessage("plugin-message-enabled-false"));
             }
             return;
         }
@@ -981,13 +991,13 @@ public class BungeeMessenger implements Listener {
                 type = in.readUTF();
             } catch (Exception e) {
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: 读取自定义通道消息type失败: " + e.getMessage());
+                    log(languageManager.getLogMessage("plugin-message-type-read-failed", "error", e.getMessage()));
                 }
                 return;
             }
 
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: 自定义通道消息类型=" + type);
+                log(languageManager.getLogMessage("plugin-message-type", "type", type));
             }
 
             if ("REQ".equals(type)) {
@@ -998,7 +1008,7 @@ public class BungeeMessenger implements Listener {
                     server = in.readUTF();
                 } catch (Exception e) {
                     if (isDebug()) {
-                        Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: 读取REQ请求server失败: " + e.getMessage());
+                        log(languageManager.getLogMessage("plugin-message-req-server-read-failed", "error", e.getMessage()));
                     }
                     return;
                 }
@@ -1008,20 +1018,24 @@ public class BungeeMessenger implements Listener {
                 out.writeInt(Limbo.getInstance().getPlayers().size());
                 out.writeInt(Limbo.getInstance().getServerProperties().getMaxPlayers());
                 out.writeBoolean(true);
+                // Limbo 无法获取 TPS，使用默认值
+                out.writeDouble(20.0);
+                out.writeLong(0);
+                out.writeLong(0);
                 try {
                     player.sendPluginMessage(CHANNEL_SERVER_INFO, out.toByteArray());
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] ServerInfo: 响应状态查询请求，服务器=" + server + " 在线=" + Limbo.getInstance().getPlayers().size() + " 最大=" + Limbo.getInstance().getServerProperties().getMaxPlayers());
+                    log(languageManager.getLogMessage("serverinfo-response", "server", server, "online", String.valueOf(Limbo.getInstance().getPlayers().size()), "max", String.valueOf(Limbo.getInstance().getServerProperties().getMaxPlayers())));
                 }
                 return;
             }
 
             if (!"RESP".equals(type)) {
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: 未知消息类型=" + type + "，忽略");
+                    log(languageManager.getLogMessage("plugin-message-unknown-type", "type", type));
                 }
                 return;
             }
@@ -1030,24 +1044,52 @@ public class BungeeMessenger implements Listener {
             int online;
             int maxPlayers;
             boolean onlineStatus;
+            double tps = 20.0;
+            long usedMemory = 0;
+            long maxMemory = 0;
+            String remoteProtocolVersion = null;
             try {
                 server = in.readUTF();
                 online = in.readInt();
                 maxPlayers = in.readInt();
                 onlineStatus = in.readBoolean();
+                // 尝试读取扩展字段（TPS、内存、协议版本）
+                try {
+                    tps = in.readDouble();
+                    usedMemory = in.readLong();
+                    maxMemory = in.readLong();
+                    // 尝试读取协议版本字段（新版本配套插件会发送）
+                    remoteProtocolVersion = in.readUTF();
+                } catch (Exception e) {
+                    // 旧版本插件没有这些字段，使用默认值
+                }
             } catch (Exception e) {
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: 读取RESP响应失败: " + e.getMessage());
+                    log(languageManager.getLogMessage("plugin-message-resp-read-failed", "error", e.getMessage()));
                 }
                 return;
             }
 
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] onPluginMessageReceived: 收到RESP响应，服务器=" + server + " 在线=" + online + " 最大=" + maxPlayers + " 状态=" + onlineStatus);
+                log(languageManager.getLogMessage("plugin-message-resp-received", "server", server, "online", String.valueOf(online), "max", String.valueOf(maxPlayers), "status", String.valueOf(onlineStatus), "tps", String.valueOf(tps)));
+            }
+
+            // 协议版本兼容性检查
+            if (remoteProtocolVersion != null && !remoteProtocolVersion.isEmpty()
+                    && !PROTOCOL_VERSION.equals(remoteProtocolVersion)) {
+                String key = server + "|" + remoteProtocolVersion;
+                if (!reportedVersionMismatches.contains(key)) {
+                    reportedVersionMismatches.add(key);
+                    log(languageManager.getLogMessage("protocol-version-mismatch-header"));
+                    log(languageManager.getLogMessage("protocol-version-mismatch", "localVersion", PROTOCOL_VERSION, "server", server, "remoteVersion", remoteProtocolVersion));
+                    log(languageManager.getLogMessage("protocol-version-mismatch-suggestion"));
+                    log(languageManager.getLogMessage("protocol-version-mismatch-note"));
+                    log(languageManager.getLogMessage("protocol-version-mismatch-header"));
+                }
             }
 
             // 更新缓存中的状态
-            serverStatusCache.put(server, new ServerStatus(server, online, maxPlayers, onlineStatus));
+            serverStatusCache.put(server, new ServerStatus(server, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory));
 
             // 更新最后收到响应的时间戳
             // 注意：即使 maxPlayers = 0，只要 onlineStatus = true，也说明服务器进程存在并可通信
@@ -1067,15 +1109,15 @@ public class BungeeMessenger implements Listener {
      */
     private ServerStatus pingMinecraftServer(String serverName, String ip, int port) {
         if (isDebug()) {
-            Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: 开始检测，目标=" + serverName + " " + ip + ":" + port);
+            log(languageManager.getLogMessage("ping-start", "server", serverName, "ip", ip, "port", String.valueOf(port)));
         }
         try (Socket socket = new Socket()) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: 正在连接...");
+                log(languageManager.getLogMessage("ping-connecting"));
             }
             socket.connect(new InetSocketAddress(ip, port), 5000);
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: TCP连接成功");
+                log(languageManager.getLogMessage("ping-connected"));
             }
 
             DataOutputStream out = new DataOutputStream(socket.getOutputStream());
@@ -1099,7 +1141,7 @@ public class BungeeMessenger implements Listener {
             writeVarInt(out, handshakeBytes.length);
             out.write(handshakeBytes);
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: 握手包已发送");
+                log(languageManager.getLogMessage("ping-handshake-sent"));
             }
 
             // 发送状态请求包
@@ -1108,39 +1150,39 @@ public class BungeeMessenger implements Listener {
             out.writeByte(0x01); // Length: 1
             out.writeByte(0x00); // Packet ID: 0x00
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: 状态请求包已发送");
+                log(languageManager.getLogMessage("ping-status-request-sent"));
             }
 
             // 读取响应长度
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: 等待响应...");
+                log(languageManager.getLogMessage("ping-waiting-response"));
             }
             int length = readVarInt(in);
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: 响应长度=" + length);
+                log(languageManager.getLogMessage("ping-response-length", "length", String.valueOf(length)));
             }
             // 读取包ID
             int packetId = readVarInt(in);
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: 包ID=" + packetId);
+                log(languageManager.getLogMessage("ping-packet-id", "packetId", String.valueOf(packetId)));
             }
             if (packetId != 0x00) {
                 if (isDebug()) {
-                    Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: 包ID不是0x00，返回离线");
+                    log(languageManager.getLogMessage("ping-packet-id-mismatch"));
                 }
                 return new ServerStatus(serverName, 0, 0, false);
             }
             // 读取JSON字符串长度
             int jsonLength = readVarInt(in);
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: JSON长度=" + jsonLength);
+                log(languageManager.getLogMessage("ping-json-length", "length", String.valueOf(jsonLength)));
             }
             byte[] jsonBytes = new byte[jsonLength];
             in.readFully(jsonBytes);
             String json = new String(jsonBytes, StandardCharsets.UTF_8);
 
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: JSON响应=" + json.substring(0, Math.min(json.length(), 200)));
+                log(languageManager.getLogMessage("ping-json-response", "json", json.substring(0, Math.min(json.length(), 200))));
             }
 
             // 解析JSON
@@ -1150,13 +1192,13 @@ public class BungeeMessenger implements Listener {
             int maxPlayers = players != null && players.has("max") ? players.get("max").getAsInt() : 0;
 
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: 解析成功，online=" + online + " maxPlayers=" + maxPlayers);
+                log(languageManager.getLogMessage("ping-parse-success", "online", String.valueOf(online), "maxPlayers", String.valueOf(maxPlayers)));
             }
 
             return new ServerStatus(serverName, online, maxPlayers, true);
         } catch (Exception e) {
             if (isDebug()) {
-                Limbo.getInstance().getConsole().sendMessage("[LoginQueue2Limbo] [DEBUG] pingMinecraftServer: 检测失败: " + e.getClass().getName() + ": " + e.getMessage());
+                log(languageManager.getLogMessage("ping-failed", "error", e.getClass().getName() + ": " + e.getMessage()));
             }
             return new ServerStatus(serverName, 0, 0, false);
         }
@@ -1191,6 +1233,95 @@ public class BungeeMessenger implements Listener {
     }
 
     /**
+     * 通过 MSLP 获取指定服务器的在线玩家列表
+     *
+     * @param serverName 服务器名称
+     * @param ip 服务器IP
+     * @param port 服务器端口
+     * @return 在线玩家列表，失败返回空列表
+     */
+    public List<String> getServerPlayerListViaMSLP(String serverName, String ip, int port) {
+        List<String> playerList = new ArrayList<>();
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(ip, port), 5000);
+
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+            DataInputStream in = new DataInputStream(socket.getInputStream());
+
+            ByteArrayOutputStream handshake = new ByteArrayOutputStream();
+            DataOutputStream handshakeData = new DataOutputStream(handshake);
+            writeVarInt(handshakeData, 0x00);
+            writeVarInt(handshakeData, -1);
+            writeString(handshakeData, ip);
+            handshakeData.writeShort(port);
+            writeVarInt(handshakeData, 1);
+
+            byte[] handshakeBytes = handshake.toByteArray();
+            writeVarInt(out, handshakeBytes.length);
+            out.write(handshakeBytes);
+
+            out.writeByte(0x01);
+            out.writeByte(0x00);
+
+            int length = readVarInt(in);
+            int packetId = readVarInt(in);
+            if (packetId != 0x00) {
+                return playerList;
+            }
+            int jsonLength = readVarInt(in);
+            byte[] jsonBytes = new byte[jsonLength];
+            in.readFully(jsonBytes);
+            String json = new String(jsonBytes, StandardCharsets.UTF_8);
+
+            JsonObject root = new JsonParser().parse(json).getAsJsonObject();
+            JsonObject players = root.getAsJsonObject("players");
+            if (players != null && players.has("sample")) {
+                com.google.gson.JsonArray sample = players.getAsJsonArray("sample");
+                if (sample != null) {
+                    for (int i = 0; i < sample.size(); i++) {
+                        JsonObject playerObj = sample.get(i).getAsJsonObject();
+                        if (playerObj.has("name")) {
+                            playerList.add(playerObj.get("name").getAsString());
+                        }
+                    }
+                }
+            }
+
+            if (isDebug()) {
+                log(languageManager.getLogMessage("mslp-player-list-success", "server", serverName, "count", String.valueOf(playerList.size())));
+            }
+        } catch (Exception e) {
+            if (isDebug()) {
+                log(languageManager.getLogMessage("mslp-player-list-failed", "server", serverName, "error", e.getMessage()));
+            }
+        }
+        return playerList;
+    }
+
+    /**
+     * 获取所有子服务器的在线玩家数据（通过 MSLP）
+     */
+    public Map<String, List<String>> getAllServerPlayerListsViaMSLP() {
+        Map<String, List<String>> result = new HashMap<>();
+        if (!udpEnabled) {
+            return result;
+        }
+        for (UDPClient client : udpClients) {
+            int gamePort = client.getGamePort();
+            if (gamePort > 0) {
+                List<String> players = getServerPlayerListViaMSLP(client.getServerName(), client.getHost(), gamePort);
+                result.put(client.getServerName(), players);
+            } else {
+                List<String> players = getServerPlayerListViaMSLP(client.getServerName(), client.getHost(), 25565);
+                if (!players.isEmpty()) {
+                    result.put(client.getServerName(), players);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
      * 服务器状态信息封装类
      */
     public static class ServerStatus {
@@ -1198,12 +1329,32 @@ public class BungeeMessenger implements Listener {
         private final int onlinePlayers;
         private final int maxPlayers;
         private final boolean online;
+        private final List<String> playerList;
+        private final double tps;
+        private final long usedMemory;
+        private final long maxMemory;
 
         public ServerStatus(String serverName, int onlinePlayers, int maxPlayers, boolean online) {
+            this(serverName, onlinePlayers, maxPlayers, online, new ArrayList<>(), 20.0, 0, 0);
+        }
+
+        public ServerStatus(String serverName, int onlinePlayers, int maxPlayers, boolean online, List<String> playerList) {
+            this(serverName, onlinePlayers, maxPlayers, online, playerList, 20.0, 0, 0);
+        }
+
+        public ServerStatus(String serverName, int onlinePlayers, int maxPlayers, boolean online, double tps, long usedMemory, long maxMemory) {
+            this(serverName, onlinePlayers, maxPlayers, online, new ArrayList<>(), tps, usedMemory, maxMemory);
+        }
+
+        public ServerStatus(String serverName, int onlinePlayers, int maxPlayers, boolean online, List<String> playerList, double tps, long usedMemory, long maxMemory) {
             this.serverName = serverName;
             this.onlinePlayers = onlinePlayers;
             this.maxPlayers = maxPlayers;
             this.online = online;
+            this.playerList = playerList != null ? playerList : new ArrayList<>();
+            this.tps = tps;
+            this.usedMemory = usedMemory;
+            this.maxMemory = maxMemory;
         }
 
         public String getServerName() {
@@ -1222,6 +1373,22 @@ public class BungeeMessenger implements Listener {
             return online;
         }
 
+        public List<String> getPlayerList() {
+            return new ArrayList<>(playerList);
+        }
+
+        public double getTps() {
+            return tps;
+        }
+
+        public long getUsedMemory() {
+            return usedMemory;
+        }
+
+        public long getMaxMemory() {
+            return maxMemory;
+        }
+
         /**
          * 计算服务器负载比例（0.0 - 1.0）
          */
@@ -1232,7 +1399,7 @@ public class BungeeMessenger implements Listener {
 
         @Override
         public String toString() {
-            return serverName + " [" + onlinePlayers + "/" + maxPlayers + "] " + (online ? "在线" : "离线");
+            return serverName + " [" + onlinePlayers + "/" + maxPlayers + "] TPS=" + String.format("%.1f", tps) + " MEM=" + usedMemory + "MB/" + maxMemory + "MB " + (online ? "ONLINE" : "OFFLINE");
         }
     }
 }

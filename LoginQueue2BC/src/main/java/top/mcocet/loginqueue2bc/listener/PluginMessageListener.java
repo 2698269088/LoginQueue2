@@ -34,7 +34,7 @@ public class PluginMessageListener implements Listener {
         String channel = event.getTag();
         String senderType = event.getSender().getClass().getSimpleName();
         int dataLen = event.getData().length;
-        plugin.debug("收到消息通道: " + channel + " 发送者类型: " + senderType + " 数据长度: " + dataLen + " 字节");
+        plugin.debug(plugin.getLanguageManager().getLogMessage("plugin-message-received", "channel", channel, "senderType", senderType, "dataLen", String.valueOf(dataLen)));
 
         if (LoginQueue2BC.CHANNEL_CONNECT_OTHER.equals(channel)) {
             handleConnectOther(event);
@@ -50,13 +50,13 @@ public class PluginMessageListener implements Listener {
             // 按消息 type 字段判断请求/响应，不再依赖发送者类型
             String msgType = peekMessageType(event.getData());
             if ("RESP".equals(msgType)) {
-                plugin.debug("ServerInfo: 识别为响应消息");
+                plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-identified-response"));
                 handleServerInfoResponse(event);
             } else if ("REQ".equals(msgType)) {
-                plugin.debug("ServerInfo: 识别为请求消息");
+                plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-identified-request"));
                 handleServerInfoRequest(event);
             } else {
-                plugin.debug("ServerInfo: 未知消息类型: " + msgType);
+                plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-unknown-type", "type", msgType));
             }
         }
 
@@ -73,23 +73,23 @@ public class PluginMessageListener implements Listener {
             targetPlayerName = in.readUTF();
             targetServerName = in.readUTF();
         } catch (Exception e) {
-            plugin.getLogger().warning("ConnectOther 消息格式错误: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("connect-other-format-error", "error", e.getMessage()));
             return;
         }
 
         ProxiedPlayer target = proxy.getPlayer(targetPlayerName);
         if (target == null) {
-            plugin.getLogger().warning("ConnectOther: 玩家 " + targetPlayerName + " 不在线");
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("connect-other-player-offline", "player", targetPlayerName));
             return;
         }
 
         ServerInfo targetServer = proxy.getServerInfo(targetServerName);
         if (targetServer == null) {
-            plugin.getLogger().warning("ConnectOther: 目标服务器 " + targetServerName + " 不存在");
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("connect-other-server-not-found", "server", targetServerName));
             return;
         }
 
-        plugin.debug("ConnectOther: 将玩家 " + targetPlayerName + " 转移到 " + targetServerName);
+        plugin.debug(plugin.getLanguageManager().getLogMessage("connect-other-redirect", "player", targetPlayerName, "server", targetServerName));
         target.connect(targetServer);
         event.setCancelled(true);
     }
@@ -101,7 +101,7 @@ public class PluginMessageListener implements Listener {
         // 从来源关联的服务器上找一个玩家来执行连接请求
         ProxiedPlayer sender = findPlayerFromSender(event.getSender());
         if (sender == null) {
-            plugin.getLogger().warning("ConnectRequest: 无法从来源找到玩家来执行连接");
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("connect-request-no-player"));
             return;
         }
 
@@ -110,17 +110,17 @@ public class PluginMessageListener implements Listener {
         try {
             targetServerName = in.readUTF();
         } catch (Exception e) {
-            plugin.getLogger().warning("ConnectRequest 消息格式错误: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("connect-request-format-error", "error", e.getMessage()));
             return;
         }
 
         ServerInfo targetServer = proxy.getServerInfo(targetServerName);
         if (targetServer == null) {
-            plugin.getLogger().warning("ConnectRequest: 目标服务器 " + targetServerName + " 不存在");
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("connect-request-server-not-found", "server", targetServerName));
             return;
         }
 
-        plugin.debug("ConnectRequest: 玩家 " + sender.getName() + " 请求连接到 " + targetServerName);
+        plugin.debug(plugin.getLanguageManager().getLogMessage("connect-request-redirect", "player", sender.getName(), "server", targetServerName));
         sender.connect(targetServer);
         event.setCancelled(true);
     }
@@ -136,16 +136,16 @@ public class PluginMessageListener implements Listener {
             playerName = in.readUTF();
             uuidStr = in.readUTF();
         } catch (Exception e) {
-            plugin.getLogger().warning("LoginSuccess 消息格式错误: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("login-success-format-error", "error", e.getMessage()));
             return;
         }
 
         try {
             UUID uuid = UUID.fromString(uuidStr);
             loggedInPlayers.add(uuid);
-            plugin.debug("LoginSuccess: 玩家 " + playerName + " (" + uuid + ") 已登录，允许使用 /server 命令");
+            plugin.debug(plugin.getLanguageManager().getLogMessage("login-success-recorded", "player", playerName, "uuid", uuid.toString()));
         } catch (IllegalArgumentException e) {
-            plugin.getLogger().warning("LoginSuccess: 无效的 UUID: " + uuidStr);
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("login-success-invalid-uuid", "uuid", uuidStr));
         }
         event.setCancelled(true);
     }
@@ -162,7 +162,7 @@ public class PluginMessageListener implements Listener {
      */
     public void removePlayer(UUID uuid) {
         loggedInPlayers.remove(uuid);
-        plugin.debug("LoginSuccess: 玩家 " + uuid + " 已断开，移除登录状态");
+        plugin.debug(plugin.getLanguageManager().getLogMessage("login-success-disconnect", "uuid", uuid.toString()));
     }
 
     /**
@@ -191,33 +191,42 @@ public class PluginMessageListener implements Listener {
             type = in.readUTF();
             serverName = in.readUTF();
         } catch (Exception e) {
-            plugin.getLogger().warning("ServerInfo 请求格式错误: " + e.getMessage());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("serverinfo-request-format-error", "error", e.getMessage()));
             return;
         }
-        plugin.debug("ServerInfo: 收到请求查询服务器: " + serverName);
+        plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-request-received", "server", serverName));
 
-        ServerInfo targetServer = proxy.getServerInfo(serverName);
-        if (targetServer == null) {
-            plugin.debug("ServerInfo: 目标服务器 " + serverName + " 不存在，返回离线状态");
-            findAnyPlayerToRespond(event.getSender(), serverName, 0, 0, false);
+        // 检查是否是版本查询请求
+        if ("VERSION_CHECK".equals(serverName)) {
+            String bcProtocolVersion = LoginQueue2BC.PROTOCOL_VERSION;
+            plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-version-check", "version", bcProtocolVersion));
+            findAnyPlayerToRespond(event.getSender(), "VERSION_CHECK", 0, 0, true, 0.0, 0, 0, bcProtocolVersion);
             event.setCancelled(true);
             return;
         }
 
-        plugin.debug("ServerInfo: 转发请求到子服务器，目标: " + serverName + " 目标服在线玩家数: " + targetServer.getPlayers().size());
+        ServerInfo targetServer = proxy.getServerInfo(serverName);
+        if (targetServer == null) {
+            plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-server-not-found", "server", serverName));
+            findAnyPlayerToRespond(event.getSender(), serverName, 0, 0, false, 0.0, 0, 0);
+            event.setCancelled(true);
+            return;
+        }
+
+        plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-forward", "server", serverName, "count", String.valueOf(targetServer.getPlayers().size())));
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF("REQ");
         out.writeUTF(serverName);
         // 注意：必须通过目标服务器上的玩家连接发送，Bukkit 端才能收到插件消息
         if (!targetServer.getPlayers().isEmpty()) {
             ProxiedPlayer relayPlayer = targetServer.getPlayers().iterator().next();
-            plugin.debug("ServerInfo: 使用转发玩家: " + relayPlayer.getName());
+            plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-relay-player", "player", relayPlayer.getName()));
             relayPlayer.sendData(LoginQueue2BC.CHANNEL_SERVER_INFO, out.toByteArray());
         } else {
             // 目标服务器没有玩家，无法通过玩家连接转发请求
             // 返回在线状态为 true，但人数为 0，让 Main 端自行判断
-            plugin.debug("ServerInfo: 目标服务器没有玩家，返回在线但人数为0");
-            findAnyPlayerToRespond(event.getSender(), serverName, 0, targetServer.getPlayers().size(), true);
+            plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-no-players"));
+            findAnyPlayerToRespond(event.getSender(), serverName, 0, targetServer.getPlayers().size(), true, 0.0, 0, 0);
         }
         event.setCancelled(true);
     }
@@ -225,23 +234,26 @@ public class PluginMessageListener implements Listener {
     /**
      * 向与消息来源关联的任意玩家发送响应
      */
-    private void findAnyPlayerToRespond(Object sender, String serverName, int online, int maxPlayers, boolean onlineStatus) {
+    private void findAnyPlayerToRespond(Object sender, String serverName, int online, int maxPlayers, boolean onlineStatus, double tps, long usedMemory, long maxMemory, String version) {
         if (sender instanceof ProxiedPlayer) {
-            sendServerInfoResponse((ProxiedPlayer) sender, serverName, online, maxPlayers, onlineStatus);
+            sendServerInfoResponse((ProxiedPlayer) sender, serverName, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory, version);
         } else if (sender instanceof Server) {
-            // 从来源服务器上找一个玩家来发送响应
             Server server = (Server) sender;
             for (ProxiedPlayer p : server.getInfo().getPlayers()) {
-                sendServerInfoResponse(p, serverName, online, maxPlayers, onlineStatus);
+                sendServerInfoResponse(p, serverName, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory, version);
                 return;
             }
         }
     }
 
+    private void findAnyPlayerToRespond(Object sender, String serverName, int online, int maxPlayers, boolean onlineStatus, double tps, long usedMemory, long maxMemory) {
+        findAnyPlayerToRespond(sender, serverName, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory, null);
+    }
+
     private void handleServerInfoResponse(PluginMessageEvent event) {
         Server sourceServer = (Server) event.getSender();
         byte[] data = event.getData();
-        plugin.debug("ServerInfo: 收到来自子服务器 " + sourceServer.getInfo().getName() + " 的响应，数据长度=" + data.length + " 字节");
+        plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-response-received", "server", sourceServer.getInfo().getName(), "dataLen", String.valueOf(data.length)));
 
         ByteArrayDataInput in = ByteStreams.newDataInput(data);
 
@@ -250,43 +262,66 @@ public class PluginMessageListener implements Listener {
         int online;
         int maxPlayers;
         boolean onlineStatus;
+        double tps = 20.0;
+        long usedMemory = 0;
+        long maxMemory = 0;
         try {
             type = in.readUTF();
             serverName = in.readUTF();
-            plugin.debug("ServerInfo: 读取到 serverName=" + serverName);
+            plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-read-server", "server", serverName));
             online = in.readInt();
-            plugin.debug("ServerInfo: 读取到 online=" + online);
+            plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-read-online", "online", String.valueOf(online)));
             maxPlayers = in.readInt();
-            plugin.debug("ServerInfo: 读取到 maxPlayers=" + maxPlayers);
+            plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-read-max", "max", String.valueOf(maxPlayers)));
             onlineStatus = in.readBoolean();
-            plugin.debug("ServerInfo: 读取到 onlineStatus=" + onlineStatus);
+            plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-read-status", "status", String.valueOf(onlineStatus)));
+            // 尝试读取扩展字段（TPS、内存）
+            try {
+                tps = in.readDouble();
+                usedMemory = in.readLong();
+                maxMemory = in.readLong();
+                plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-read-tps", "tps", String.valueOf(tps), "usedMemory", String.valueOf(usedMemory), "maxMemory", String.valueOf(maxMemory)));
+            } catch (Exception e) {
+                // 旧版本插件没有这些字段，使用默认值
+                plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-read-ext-failed"));
+            }
         } catch (Exception e) {
-            plugin.getLogger().warning("ServerInfo 响应格式错误: " + e.getMessage() + " 数据长度=" + data.length + " 字节 来源服务器=" + sourceServer.getInfo().getName());
+            plugin.getLogger().warning(plugin.getLanguageManager().getLogMessage("serverinfo-response-format-error", "error", e.getMessage(), "dataLen", String.valueOf(data.length), "source", sourceServer.getInfo().getName()));
             return;
         }
 
-        plugin.debug("ServerInfo: 响应 " + serverName + " 在线=" + online + " 最大=" + maxPlayers + " 状态=" + onlineStatus);
+        plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-response-data", "server", serverName, "online", String.valueOf(online), "max", String.valueOf(maxPlayers), "status", String.valueOf(onlineStatus), "tps", String.valueOf(tps)));
         // 将响应转发给所有子服务器上的所有在线玩家，确保请求者能收到
         int playerCount = 0;
         for (net.md_5.bungee.api.config.ServerInfo si : proxy.getServers().values()) {
             for (ProxiedPlayer player : si.getPlayers()) {
-                sendServerInfoResponse(player, serverName, online, maxPlayers, onlineStatus);
+                sendServerInfoResponse(player, serverName, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory);
                 playerCount++;
             }
         }
-        plugin.debug("ServerInfo: 响应已转发给 " + playerCount + " 个玩家");
+        plugin.debug(plugin.getLanguageManager().getLogMessage("serverinfo-response-forwarded", "count", String.valueOf(playerCount)));
         event.setCancelled(true);
     }
 
-    private void sendServerInfoResponse(ProxiedPlayer player, String serverName, int online, int maxPlayers, boolean onlineStatus) {
+    private void sendServerInfoResponse(ProxiedPlayer player, String serverName, int online, int maxPlayers, boolean onlineStatus, double tps, long usedMemory, long maxMemory, String version) {
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF("RESP");
         out.writeUTF(serverName);
         out.writeInt(online);
         out.writeInt(maxPlayers);
         out.writeBoolean(onlineStatus);
+        out.writeDouble(tps);
+        out.writeLong(usedMemory);
+        out.writeLong(maxMemory);
+        if (version != null) {
+            out.writeUTF(version);
+        }
 
         player.sendData(LoginQueue2BC.CHANNEL_SERVER_INFO, out.toByteArray());
+    }
+
+    private void sendServerInfoResponse(ProxiedPlayer player, String serverName, int online, int maxPlayers, boolean onlineStatus, double tps, long usedMemory, long maxMemory) {
+        sendServerInfoResponse(player, serverName, online, maxPlayers, onlineStatus, tps, usedMemory, maxMemory, null);
     }
 
     /**

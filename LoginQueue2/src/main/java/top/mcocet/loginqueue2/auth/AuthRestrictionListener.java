@@ -1,6 +1,5 @@
 package top.mcocet.loginqueue2.auth;
 
-import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -135,7 +134,7 @@ public class AuthRestrictionListener implements Listener {
         if (!authManager.isEnabled()) return;
         if (isRestricted(event.getPlayer())) {
             event.setCancelled(true);
-            event.getPlayer().sendMessage(ChatColor.RED + "请先登录后才能聊天");
+            event.getPlayer().sendMessage(plugin.getLanguageManager().getMessage("auth-chat-restricted"));
         }
     }
 
@@ -147,7 +146,7 @@ public class AuthRestrictionListener implements Listener {
             String cmd = event.getMessage().split(" ")[0].toLowerCase();
             if (!allowedCommands.contains(cmd)) {
                 event.setCancelled(true);
-                player.sendMessage(ChatColor.RED + "请先登录后才能使用命令");
+                player.sendMessage(plugin.getLanguageManager().getMessage("auth-command-restricted"));
             }
         }
     }
