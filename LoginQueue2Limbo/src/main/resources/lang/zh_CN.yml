@@ -42,6 +42,7 @@ messages:
   info-footer: "&a======================================="
   help-header: "&a========== LoginQueue 帮助 =========="
   help-skip: "&e/logseq skip [玩家名]&f - 跳过排队，直接进入服务器"
+  help-promote: "&e/logseq promote [玩家名]&f - 将玩家排队位置前进一位"
   help-debug: "&e/logseq debug&f - 切换调试日志开关"
   help-list: "&e/logseq list&f - 显示当前排队玩家列表"
   help-status: "&e/logseq status&f - 显示服务器状态"

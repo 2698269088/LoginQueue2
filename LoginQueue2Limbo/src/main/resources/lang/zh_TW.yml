@@ -40,6 +40,7 @@ messages:
   info-footer: "&a======================================="
   help-header: "&a========== LoginQueue 說明 =========="
   help-skip: "&e/logseq skip [玩家名]&f - 跳過排隊，直接進入伺服器"
+  help-promote: "&e/logseq promote [玩家名]&f - 將玩家排隊位置前進一位"
   help-debug: "&e/logseq debug&f - 切換調試日誌開關"
   help-list: "&e/logseq list&f - 顯示當前排隊玩家列表"
   help-status: "&e/logseq status&f - 顯示伺服器狀態"
