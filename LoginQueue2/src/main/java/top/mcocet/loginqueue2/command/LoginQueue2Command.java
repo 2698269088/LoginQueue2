@@ -11,6 +11,7 @@ import top.mcocet.loginqueue2.LoginQueue2;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2.listener.PlayerJoinListener;
 import top.mcocet.loginqueue2.util.LanguageManager;
+import top.mcocet.loginqueue2.world.LoginWorldManager;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -146,38 +147,61 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        BungeeMessenger messenger = plugin.getMessenger();
         double threshold = plugin.getConfig().getDouble("queue.threshold", 0.8);
         String balanceStrategy = plugin.getConfig().getString("queue.balance-strategy", "LEAST_PLAYERS");
 
         sender.sendMessage(languageManager.getMessage("status-header"));
 
-        // 显示所有主服务器状态
-        java.util.Map<String, BungeeMessenger.ServerStatus> allStatus = messenger.getAllServerStatus();
-        if (allStatus.isEmpty()) {
-            sender.sendMessage(languageManager.getMessage("status-offline"));
-        } else {
-            int totalOnline = 0;
-            int totalMax = 0;
-            for (BungeeMessenger.ServerStatus status : allStatus.values()) {
-                boolean isOnline = messenger.isServerOnline(status.getServerName());
-                sender.sendMessage(languageManager.getMessage("status-main-server", "server", status.getServerName()));
-                sender.sendMessage(languageManager.getMessage(isOnline ? "status-online" : "status-offline"));
-                if (isOnline) {
-                    double ratio = status.getMaxPlayers() > 0 ? status.getLoadRatio() : 0;
-                    sender.sendMessage(languageManager.getMessage("status-players",
-                            "online", String.valueOf(status.getOnlinePlayers()),
-                            "max", String.valueOf(status.getMaxPlayers())));
-                    sender.sendMessage(languageManager.getMessage("status-ratio", "ratio", String.format("%.1f", ratio * 100)));
-                    totalOnline += status.getOnlinePlayers();
-                    totalMax += status.getMaxPlayers();
-                }
+        // WORLD 模式下显示主世界在线人数
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            String mainWorldName = plugin.getConfig().getString("queue.spawn.world", "world");
+            org.bukkit.World mainWorld = plugin.getServer().getWorld(mainWorldName);
+            if (mainWorld == null) {
+                mainWorld = plugin.getServer().getWorlds().get(0);
             }
+            int totalOnline = mainWorld != null ? mainWorld.getPlayers().size() : 0;
+            int totalMax = plugin.getConfig().getInt("queue.max-online", 50);
+            sender.sendMessage(languageManager.getMessage("status-main-server", "server", mainWorldName));
+            sender.sendMessage(languageManager.getMessage("status-online"));
+            sender.sendMessage(languageManager.getMessage("status-players",
+                    "online", String.valueOf(totalOnline),
+                    "max", String.valueOf(totalMax)));
             if (totalMax > 0) {
                 double totalRatio = (double) totalOnline / totalMax;
                 sender.sendMessage(languageManager.getMessage("total-online", "online", String.valueOf(totalOnline), "max", String.valueOf(totalMax), "ratio", String.format("%.1f", totalRatio * 100)));
                 sender.sendMessage(languageManager.getMessage("status-threshold", "threshold", String.format("%.1f", threshold * 100)));
                 sender.sendMessage(languageManager.getMessage(totalRatio >= threshold ? "status-queue-paused" : "status-queue-normal"));
+            }
+        } else {
+            // PROXY 模式下显示 BungeeCord 服务器状态
+            BungeeMessenger messenger = plugin.getMessenger();
+            java.util.Map<String, BungeeMessenger.ServerStatus> allStatus = messenger.getAllServerStatus();
+            if (allStatus.isEmpty()) {
+                sender.sendMessage(languageManager.getMessage("status-offline"));
+            } else {
+                int totalOnline = 0;
+                int totalMax = 0;
+                for (BungeeMessenger.ServerStatus status : allStatus.values()) {
+                    boolean isOnline = messenger.isServerOnline(status.getServerName());
+                    sender.sendMessage(languageManager.getMessage("status-main-server", "server", status.getServerName()));
+                    sender.sendMessage(languageManager.getMessage(isOnline ? "status-online" : "status-offline"));
+                    if (isOnline) {
+                        double ratio = status.getMaxPlayers() > 0 ? status.getLoadRatio() : 0;
+                        sender.sendMessage(languageManager.getMessage("status-players",
+                                "online", String.valueOf(status.getOnlinePlayers()),
+                                "max", String.valueOf(status.getMaxPlayers())));
+                        sender.sendMessage(languageManager.getMessage("status-ratio", "ratio", String.format("%.1f", ratio * 100)));
+                        totalOnline += status.getOnlinePlayers();
+                        totalMax += status.getMaxPlayers();
+                    }
+                }
+                if (totalMax > 0) {
+                    double totalRatio = (double) totalOnline / totalMax;
+                    sender.sendMessage(languageManager.getMessage("total-online", "online", String.valueOf(totalOnline), "max", String.valueOf(totalMax), "ratio", String.format("%.1f", totalRatio * 100)));
+                    sender.sendMessage(languageManager.getMessage("status-threshold", "threshold", String.format("%.1f", threshold * 100)));
+                    sender.sendMessage(languageManager.getMessage(totalRatio >= threshold ? "status-queue-paused" : "status-queue-normal"));
+                }
             }
         }
         sender.sendMessage(languageManager.getMessage("balance-strategy", "strategy", balanceStrategy));
@@ -189,6 +213,13 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
     private boolean handleRefresh(CommandSender sender) {
         if (!sender.hasPermission("loginqueue2.admin.refresh")) {
             sender.sendMessage(languageManager.getMessage("no-permission"));
+            return true;
+        }
+
+        // WORLD 模式下不需要刷新 BungeeCord 状态
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            sender.sendMessage(languageManager.getMessage("refreshed"));
             return true;
         }
 
@@ -207,6 +238,12 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
         plugin.saveDefaultConfig();
         languageManager.reload();
         listener.reloadPriority();
+        if (plugin.getAuthRestrictionListener() != null) {
+            plugin.getAuthRestrictionListener().loadAllowedCommands();
+        }
+        if (plugin.getPlayerRestrictionListener() != null) {
+            plugin.getPlayerRestrictionListener().loadWorldModeAllowedCommands();
+        }
         sender.sendMessage(languageManager.getMessage("reloaded"));
         return true;
     }
@@ -258,6 +295,30 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
     private boolean handleInfo(CommandSender sender) {
         if (!sender.hasPermission("loginqueue2.admin.info")) {
             sender.sendMessage(languageManager.getMessage("no-permission"));
+            return true;
+        }
+
+        // WORLD 模式下显示主世界信息
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            String mainWorldName = plugin.getConfig().getString("queue.spawn.world", "world");
+            org.bukkit.World mainWorld = plugin.getServer().getWorld(mainWorldName);
+            if (mainWorld == null) {
+                mainWorld = plugin.getServer().getWorlds().get(0);
+            }
+            int totalOnline = mainWorld != null ? mainWorld.getPlayers().size() : 0;
+            int totalMax = plugin.getConfig().getInt("queue.max-online", 50);
+            sender.sendMessage(languageManager.getMessage("info-header", "server", mainWorldName));
+            sender.sendMessage(languageManager.getMessage("info-status", "status", languageManager.getMessage("online")));
+            sender.sendMessage(languageManager.getMessage("info-players",
+                    "online", String.valueOf(totalOnline),
+                    "max", String.valueOf(totalMax)));
+            if (totalMax > 0) {
+                double ratio = (double) totalOnline / totalMax;
+                sender.sendMessage(languageManager.getMessage("info-load",
+                        "ratio", String.format("%.1f", ratio * 100)));
+            }
+            sender.sendMessage(languageManager.getMessage("info-footer"));
             return true;
         }
 

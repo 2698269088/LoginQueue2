@@ -18,6 +18,8 @@ import org.bukkit.event.player.PlayerPickupItemEvent;
 import top.mcocet.loginqueue2.LoginQueue2;
 
 import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -35,6 +37,12 @@ public class AuthRestrictionListener implements Listener {
     public AuthRestrictionListener(LoginQueue2 plugin, AuthManager authManager) {
         this.plugin = plugin;
         this.authManager = authManager;
+        loadAllowedCommands();
+    }
+
+    public void loadAllowedCommands() {
+        allowedCommands.clear();
+        // 默认命令
         allowedCommands.add("/login");
         allowedCommands.add("/register");
         allowedCommands.add("/changepassword");
@@ -43,6 +51,17 @@ public class AuthRestrictionListener implements Listener {
         allowedCommands.add("/ls");
         allowedCommands.add("/server");
         allowedCommands.add("/join");
+        // 从配置文件加载额外命令
+        List<String> configCommands = plugin.getConfig().getStringList("auth.allowed-commands");
+        for (String cmd : configCommands) {
+            String normalized = cmd.trim().toLowerCase(Locale.ROOT);
+            if (!normalized.isEmpty() && !normalized.startsWith("/")) {
+                normalized = "/" + normalized;
+            }
+            if (!normalized.isEmpty()) {
+                allowedCommands.add(normalized);
+            }
+        }
     }
 
     public boolean isAuthenticated(UUID uuid) {

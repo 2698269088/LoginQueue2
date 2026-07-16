@@ -12,6 +12,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 import top.mcocet.loginqueue2.LoginQueue2;
 import top.mcocet.loginqueue2.udp.UDPClient;
 import top.mcocet.loginqueue2.util.LanguageManager;
+import top.mcocet.loginqueue2.util.SchedulerUtil;
 
 import java.io.*;
 import java.net.InetSocketAddress;
@@ -726,14 +727,13 @@ public class BungeeMessenger implements PluginMessageListener {
             player.sendPluginMessage(plugin, CHANNEL_BUNGEE_CORD, out.toByteArray());
         }
 
-        new BukkitRunnable() {
+        SchedulerUtil.runTaskTimer(plugin, new Runnable() {
             private int ticks = 0;
             private final int maxTicks = timeoutSeconds * 20;
 
             @Override
             public void run() {
                 if (future.isDone()) {
-                    cancel();
                     return;
                 }
 
@@ -748,21 +748,18 @@ public class BungeeMessenger implements PluginMessageListener {
                     }
                     if (anyUpdated) {
                         future.complete(isMainServerOnline());
-                        cancel();
                         return;
                     }
                 } else if (enabled) {
                     // 开启BC扩展模式
                     if (lastServerInfoTimeMap.getOrDefault(mainServer, 0L) >= requestTime) {
                         future.complete(isMainServerOnline());
-                        cancel();
                         return;
                     }
                 } else {
                     // 关闭BC扩展模式：检查ServerIP响应是否已处理（通过Minecraft Server List Ping更新缓存）
                     if (lastServerInfoTimeMap.getOrDefault(mainServer, 0L) >= requestTime) {
                         future.complete(isMainServerOnline());
-                        cancel();
                         return;
                     }
                 }
@@ -770,10 +767,9 @@ public class BungeeMessenger implements PluginMessageListener {
                 ticks += 2;
                 if (ticks >= maxTicks) {
                     future.complete(false);
-                    cancel();
                 }
             }
-        }.runTaskTimer(plugin, 2L, 2L);
+        }, 2L, 2L);
 
         return future;
     }

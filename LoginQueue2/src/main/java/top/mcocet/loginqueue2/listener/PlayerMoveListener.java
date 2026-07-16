@@ -9,6 +9,8 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
 import top.mcocet.loginqueue2.LoginQueue2;
+import top.mcocet.loginqueue2.util.SchedulerUtil;
+import top.mcocet.loginqueue2.world.LoginWorldManager;
 
 import java.util.Set;
 import java.util.UUID;
@@ -58,6 +60,14 @@ public class PlayerMoveListener implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
+        // WORLD 模式下，不在登录世界的玩家不限制
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            if (!loginWorldManager.isInLoginWorld(player)) {
+                return;
+            }
+        }
+
         // 已放行的玩家不限制
         if (allowedPlayers.contains(uuid)) {
             return;
@@ -73,14 +83,14 @@ public class PlayerMoveListener implements Listener {
         if (restrictRange && centerLocation.getWorld() != null) {
             Location to = event.getTo();
             if (!to.getWorld().equals(centerLocation.getWorld())) {
-                player.teleport(centerLocation);
+                SchedulerUtil.teleport(player, centerLocation);
                 event.setCancelled(true);
                 return;
             }
             double distance = to.distance(centerLocation);
             if (distance > rangeLimit) {
                 Location safeLocation = pullBackLocation(to, centerLocation, rangeLimit);
-                player.teleport(safeLocation);
+                SchedulerUtil.teleport(player, safeLocation);
                 event.setCancelled(true);
             }
         }

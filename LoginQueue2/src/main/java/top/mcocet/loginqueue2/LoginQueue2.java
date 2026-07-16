@@ -17,6 +17,8 @@ import top.mcocet.loginqueue2.listener.PlayerMoveListener;
 import top.mcocet.loginqueue2.listener.PlayerRestrictionListener;
 import top.mcocet.loginqueue2.listener.QueueItemListener;
 import top.mcocet.loginqueue2.scoreboard.ServerScoreboardManager;
+import top.mcocet.loginqueue2.util.SchedulerUtil;
+import top.mcocet.loginqueue2.world.LoginWorldManager;
 
 public final class LoginQueue2 extends JavaPlugin {
 
@@ -25,7 +27,10 @@ public final class LoginQueue2 extends JavaPlugin {
     private LanguageManager languageManager;
     private AuthManager authManager;
     private AuthRestrictionListener authRestrictionListener;
+    private PlayerRestrictionListener playerRestrictionListener;
     private ServerScoreboardManager scoreboardManager;
+    private LoginWorldManager loginWorldManager;
+    private QueueItemListener queueItemListener;
     private boolean debug;
 
     @Override
@@ -35,34 +40,61 @@ public final class LoginQueue2 extends JavaPlugin {
         this.debug = getConfig().getBoolean("debug", false);
         this.languageManager = new LanguageManager(this);
 
-        boolean enableBungeeExtension = getConfig().getBoolean("enable-bungee-extension", true);
+        // 检测工作模式
+        boolean worldMode = "WORLD".equalsIgnoreCase(getConfig().getString("work-mode", "PROXY"));
+
+        if (worldMode) {
+            getLogger().info(languageManager.getLogMessage("world-mode-enabled"));
+        } else {
+            getLogger().info(languageManager.getLogMessage("proxy-mode-enabled"));
+        }
+
+        boolean enableBungeeExtension = !worldMode && getConfig().getBoolean("enable-bungee-extension", true);
         this.messenger = new BungeeMessenger(this, enableBungeeExtension);
-        getLogger().info(languageManager.getLogMessage("bungee-extension-status", "status", languageManager.getLogMessage(enableBungeeExtension ? "enabled" : "disabled")));
+        if (!worldMode) {
+            getLogger().info(languageManager.getLogMessage("bungee-extension-status", "status", languageManager.getLogMessage(enableBungeeExtension ? "enabled" : "disabled")));
+        }
         this.authManager = new AuthManager(this);
         this.authRestrictionListener = new AuthRestrictionListener(this, authManager);
         getServer().getPluginManager().registerEvents(authRestrictionListener, this);
 
+        // 初始化登录世界管理器（WORLD 模式）
+        this.loginWorldManager = new LoginWorldManager(this);
+        getServer().getPluginManager().registerEvents(loginWorldManager, this);
+        loginWorldManager.init();
+
         this.playerJoinListener = new PlayerJoinListener(this, messenger, authManager, authRestrictionListener);
         getServer().getPluginManager().registerEvents(playerJoinListener, this);
 
-        this.scoreboardManager = new ServerScoreboardManager(this, messenger);
+        // WORLD 模式下禁用计分板（不需要显示 BungeeCord 服务器状态）
+        if (!worldMode && getConfig().getBoolean("scoreboard.enabled", true)) {
+            this.scoreboardManager = new ServerScoreboardManager(this, messenger);
+        }
 
-        getServer().getPluginManager().registerEvents(new PlayerRestrictionListener(this, playerJoinListener, playerJoinListener.getAllowedPlayers()), this);
+        this.playerRestrictionListener = new PlayerRestrictionListener(this, playerJoinListener, playerJoinListener.getAllowedPlayers());
+        getServer().getPluginManager().registerEvents(playerRestrictionListener, this);
 
-        getServer().getPluginManager().registerEvents(new QueueItemListener(this, playerJoinListener), this);
+        this.queueItemListener = new QueueItemListener(this, playerJoinListener);
+        getServer().getPluginManager().registerEvents(queueItemListener, this);
 
         boolean restrictMovement = getConfig().getBoolean("queue.restrict-movement", true);
         getServer().getPluginManager().registerEvents(new PlayerMoveListener(this, playerJoinListener, playerJoinListener.getAllowedPlayers(), restrictMovement), this);
 
-        getServer().getPluginManager().registerEvents(new DimensionListener(this), this);
+        getServer().getPluginManager().registerEvents(new DimensionListener(this, loginWorldManager), this);
 
         sayLog();
 
+        // WORLD 模式下，性能模式只对登录世界生效
         boolean performanceMode = getConfig().getBoolean("queue.performance-mode", true);
-        getServer().getPluginManager().registerEvents(new PerformanceListener(performanceMode), this);
+        getServer().getPluginManager().registerEvents(new PerformanceListener(performanceMode, loginWorldManager), this);
         if (performanceMode) {
-            for (org.bukkit.World world : getServer().getWorlds()) {
-                PerformanceListener.applyWorldSettings(world);
+            if (worldMode && loginWorldManager.getLoginWorld() != null) {
+                SchedulerUtil.runTask(this, () -> PerformanceListener.applyWorldSettings(loginWorldManager.getLoginWorld()));
+            } else if (!worldMode) {
+                for (org.bukkit.World world : getServer().getWorlds()) {
+                    final org.bukkit.World w = world;
+                    SchedulerUtil.runTask(this, () -> PerformanceListener.applyWorldSettings(w));
+                }
             }
         }
 
@@ -80,18 +112,18 @@ public final class LoginQueue2 extends JavaPlugin {
         getCommand("changepassword").setExecutor(authCommand);
         getCommand("changepw").setExecutor(authCommand);
 
-        startRefreshTask();
+        // WORLD 模式下禁用 BungeeCord 刷新任务
+        if (!worldMode) {
+            startRefreshTask();
+        }
 
         // 延迟检查代理端插件版本（给网络连接一点初始化时间）
-        if (enableBungeeExtension) {
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    if (isEnabled() && messenger != null) {
-                        messenger.requestProxyVersion();
-                    }
+        if (!worldMode && enableBungeeExtension) {
+            SchedulerUtil.runTaskLater(this, () -> {
+                if (isEnabled() && messenger != null) {
+                    messenger.requestProxyVersion();
                 }
-            }.runTaskLater(this, 200L); // 10秒后检查
+            }, 200L); // 10秒后检查
         }
 
         logStartupConfig();
@@ -132,6 +164,10 @@ public final class LoginQueue2 extends JavaPlugin {
     }
 
     private void logServerStatus() {
+        // WORLD 模式下不显示 BungeeCord 服务器状态
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            return;
+        }
         if (!messenger.isEnabled()) {
             return;
         }
@@ -153,19 +189,20 @@ public final class LoginQueue2 extends JavaPlugin {
     }
 
     private void scheduleNextRefresh(long onlineInterval, long offlineInterval, long delay) {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (!isEnabled()) {
-                    return;
-                }
-
-                messenger.refresh();
-
-                long nextInterval = messenger.isMainServerOnline() ? onlineInterval : offlineInterval;
-                scheduleNextRefresh(onlineInterval, offlineInterval, nextInterval);
+        // WORLD 模式下不启动刷新任务
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            return;
+        }
+        SchedulerUtil.runTaskLater(this, () -> {
+            if (!isEnabled()) {
+                return;
             }
-        }.runTaskLater(this, delay);
+
+            messenger.refresh();
+
+            long nextInterval = messenger.isMainServerOnline() ? onlineInterval : offlineInterval;
+            scheduleNextRefresh(onlineInterval, offlineInterval, nextInterval);
+        }, delay);
     }
 
     @Override
@@ -198,8 +235,20 @@ public final class LoginQueue2 extends JavaPlugin {
         return authRestrictionListener;
     }
 
+    public PlayerRestrictionListener getPlayerRestrictionListener() {
+        return playerRestrictionListener;
+    }
+
     public ServerScoreboardManager getScoreboardManager() {
         return scoreboardManager;
+    }
+
+    public LoginWorldManager getLoginWorldManager() {
+        return loginWorldManager;
+    }
+
+    public QueueItemListener getQueueItemListener() {
+        return queueItemListener;
     }
 
     public boolean isDebug() {

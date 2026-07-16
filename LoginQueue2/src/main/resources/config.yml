@@ -1,7 +1,15 @@
 # 插件语言（支持 zh_CN、zh_TW、en_US）
 language: zh_CN
 
-# 是否启用 BungeeCord 通道扩展（需要配合 LoginQueue2BC 使用）
+# 工作模式配置
+# PROXY 登录服模式（通过BungeeCord/Velocity跳转）
+# WORLD 登录世界模式（在同一服务器内创建登录世界）
+# WORLD模式下还需要修改queue.spawn.world 配置项，指定出生世界
+# 注意：WORLD模式下需要依赖Worlds插件创建登录世界，并且设置名称不要和主世界一致
+# Worlds插件仓库： https://github.com/TheNextLvl-net/worlds
+work-mode: PROXY
+
+# 是否启用 BungeeCord 通道扩展（需要配合 LoginQueue2BC 使用，WORLD模式下无效）
 enable-bungee-extension: false
 
 # 是否启用调试日志（输出详细的插件运行信息）
@@ -24,8 +32,13 @@ auth:
   login-cooldown: 1
   # 登录成功后是否自动加入排队队列
   auto-queue-after-login: false
+  # 未登录/未注册玩家允许执行的命令列表（除默认命令外可额外配置）
+  # 默认允许: /login, /register, /changepassword, /changepw, /logseq, /ls, /server, /join
+  # 如需添加更多命令，请在此列表中添加（不需要加斜杠，插件会自动处理）
+  allowed-commands: []
 
 # UDP 服务器信息同步配置
+# WORLD模式下无需配置
 udp-sync:
   # 是否启用 UDP 服务器信息同步
   enabled: false
@@ -152,10 +165,53 @@ queue:
     material: BEACON
     # 物品显示名称
     name: "&a加入游戏"
+
+# 登录世界配置（仅在 work-mode: WORLD 时生效）
+login-world:
+  # 世界的命名空间ID（格式: 命名空间:路径）
+  key: "loginqueue2:login"
+  # 世界维度: OVERWORLD, THE_NETHER, THE_END
+  dimension: OVERWORLD
+  # 世界生成器类型: FLAT, NORMAL, LARGE_BIOMES, AMPLIFIED, DEBUG, SINGLE_BIOME
+  generator-type: FLAT
+  # 世界种子（留空则随机生成）
+  seed: ""
+  # 是否生成结构
+  structures: false
+  # 是否生成奖励箱
+  bonus-chest: false
+  # 是否硬核模式
+  hardcore: false
+  # 锁定时间为中午
+  lock-daytime: true
+  # 禁用天气更替
+  disable-weather: true
+  # 禁用生物自然生成
+  disable-mob-spawning: true
+  # 禁用 PvP
+  disable-pvp: true
+  # 性能模式（禁用时间流逝、天气、生物生成、随机刻、火焰蔓延）
+  performance-mode: true
+  # 玩家出生点配置
+  spawn:
+    x: 0.0
+    y: 64.0
+    z: 0.0
+    pitch: 0.0
+    yaw: 0.0
+
+# WORLD 模式下登录维度命令白名单配置
+# 当插件工作在 WORLD 模式时，留在登录维度且未加入游戏的玩家
+# 只能执行以下指定的命令（登录成功/加入游戏后不受限制）
+world-mode:
+  # 未放行玩家允许执行的额外命令列表（不需要加斜杠，插件会自动处理）
+  # 默认已允许: /join, /logseq, /ls
+  allowed-commands: []
+
 # 服务器状态计分板配置
 scoreboard:
   # 是否启用服务器状态计分板
-  enabled: true
+  enabled: false
   # 轮换显示服务器的间隔（秒）
   rotate-interval: 10
   # 要在计分板中显示的服务器列表

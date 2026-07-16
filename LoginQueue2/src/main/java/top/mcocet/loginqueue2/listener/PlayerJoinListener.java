@@ -18,6 +18,8 @@ import top.mcocet.loginqueue2.auth.AuthRestrictionListener;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2.queue.PriorityManager;
 import top.mcocet.loginqueue2.util.LanguageManager;
+import top.mcocet.loginqueue2.util.SchedulerUtil;
+import top.mcocet.loginqueue2.world.LoginWorldManager;
 
 import java.util.*;
 
@@ -92,11 +94,24 @@ public class PlayerJoinListener implements Listener {
         final Player player = event.getPlayer();
         final UUID uuid = player.getUniqueId();
 
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        boolean worldMode = loginWorldManager != null && loginWorldManager.isWorldMode();
+
         // 设置玩家游戏模式
         applyGameMode(player);
 
-        // 设置玩家出生点
-        teleportToSpawn(player);
+        // 设置玩家出生点（延迟1 tick执行，避免Folia上teleportAsync冲突）
+        if (worldMode && loginWorldManager != null) {
+            // WORLD 模式：传送到登录世界
+            SchedulerUtil.runTaskLater(plugin, () -> {
+                if (player.isOnline()) {
+                    loginWorldManager.teleportToLoginWorld(player);
+                }
+            }, 1L);
+        } else {
+            // PROXY 模式：传送到配置出生点
+            teleportToSpawn(player);
+        }
 
         // 显示服务器状态计分板
         if (plugin.getScoreboardManager() != null && plugin.getScoreboardManager().isEnabled()) {
@@ -127,15 +142,63 @@ public class PlayerJoinListener implements Listener {
 
         // 延迟执行，等待 BungeeCord 数据刷新和锁定时间
         long lockTime = plugin.getConfig().getLong("queue.lock-time", 3);
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (!player.isOnline()) {
+        SchedulerUtil.runTaskLater(plugin, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+
+            // WORLD 模式下不需要检查 BungeeCord 主服务器
+            if (worldMode) {
+                // 已在队列中则不再重复添加
+                if (isInQueue(uuid)) {
                     return;
                 }
 
-                // 先判断主服务器是否在线（缓存中有数据时直接判断）
-                if (messenger.isMainServerOnline()) {
+                // 计算玩家优先级并入队
+                int priority = priorityManager.calculatePriority(player);
+                waitingQueue.offer(new QueueEntry(uuid, priority, System.currentTimeMillis()));
+
+                // 通知玩家排队位置
+                sendQueueStatus(player, uuid);
+
+                // 尝试放行队列中的玩家
+                processQueue();
+                return;
+            }
+
+            // 先判断主服务器是否在线（缓存中有数据时直接判断）
+            if (messenger.isMainServerOnline()) {
+                // 已在队列中则不再重复添加
+                if (isInQueue(uuid)) {
+                    return;
+                }
+
+                // 计算玩家优先级并入队
+                int priority = priorityManager.calculatePriority(player);
+                waitingQueue.offer(new QueueEntry(uuid, priority, System.currentTimeMillis()));
+
+                // 通知玩家排队位置
+                sendQueueStatus(player, uuid);
+
+                // 尝试放行队列中的玩家
+                processQueue();
+                return;
+            }
+
+            // 缓存中没有有效数据，进行实时检测（BC 优先模式下首次连接时缓存可能为空）
+            player.sendMessage(languageManager.getMessage("checking-main-server"));
+            messenger.checkMainServerOnlineAsync(3).whenComplete((online, throwable) -> {
+                SchedulerUtil.runTask(plugin, () -> {
+                    if (throwable != null || !online) {
+                        player.sendMessage(languageManager.getMessage("main-offline"));
+                        return;
+                    }
+
+                    // 玩家已离线则忽略
+                    if (!player.isOnline()) {
+                        return;
+                    }
+
                     // 已在队列中则不再重复添加
                     if (isInQueue(uuid)) {
                         return;
@@ -150,61 +213,48 @@ public class PlayerJoinListener implements Listener {
 
                     // 尝试放行队列中的玩家
                     processQueue();
-                    return;
-                }
-
-                // 缓存中没有有效数据，进行实时检测（BC 优先模式下首次连接时缓存可能为空）
-                player.sendMessage(languageManager.getMessage("checking-main-server"));
-                messenger.checkMainServerOnlineAsync(3).whenComplete((online, throwable) -> {
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        if (throwable != null || !online) {
-                            player.sendMessage(languageManager.getMessage("main-offline"));
-                            return;
-                        }
-
-                        // 玩家已离线则忽略
-                        if (!player.isOnline()) {
-                            return;
-                        }
-
-                        // 已在队列中则不再重复添加
-                        if (isInQueue(uuid)) {
-                            return;
-                        }
-
-                        // 计算玩家优先级并入队
-                        int priority = priorityManager.calculatePriority(player);
-                        waitingQueue.offer(new QueueEntry(uuid, priority, System.currentTimeMillis()));
-
-                        // 通知玩家排队位置
-                        sendQueueStatus(player, uuid);
-
-                        // 尝试放行队列中的玩家
-                        processQueue();
-                    });
                 });
-            }
-        }.runTaskLater(plugin, lockTime * 20L);
+            });
+        }, lockTime * 20L);
     }
 
     private void sendQueueStatus(Player player, UUID uuid) {
         int position = getPosition(uuid);
-        int online = messenger.getMainServerPlayerCount();
-        int max = messenger.getMainServerMaxPlayers();
-        // 多服务器模式下显示总在线人数
-        int totalOnline = 0;
-        int totalMax = 0;
-        for (BungeeMessenger.ServerStatus status : messenger.getAllServerStatus().values()) {
-            if (status.isOnline()) {
-                totalOnline += status.getOnlinePlayers();
-                totalMax += status.getMaxPlayers();
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        boolean worldMode = loginWorldManager != null && loginWorldManager.isWorldMode();
+
+        int online;
+        int max;
+
+        if (worldMode) {
+            // WORLD 模式：显示主世界在线人数
+            String mainWorldName = plugin.getConfig().getString("queue.spawn.world", "world");
+            World mainWorld = plugin.getServer().getWorld(mainWorldName);
+            if (mainWorld == null) {
+                mainWorld = plugin.getServer().getWorlds().get(0);
+            }
+            online = mainWorld != null ? mainWorld.getPlayers().size() : 0;
+            max = plugin.getConfig().getInt("queue.max-online", 50);
+        } else {
+            // PROXY 模式：显示代理端主服务器信息
+            online = messenger.getMainServerPlayerCount();
+            max = messenger.getMainServerMaxPlayers();
+            // 多服务器模式下显示总在线人数
+            int totalOnline = 0;
+            int totalMax = 0;
+            for (BungeeMessenger.ServerStatus status : messenger.getAllServerStatus().values()) {
+                if (status.isOnline()) {
+                    totalOnline += status.getOnlinePlayers();
+                    totalMax += status.getMaxPlayers();
+                }
+            }
+            // 如果有多个服务器在线，显示总数
+            if (totalMax > 0 && messenger.getAllServerStatus().size() > 1) {
+                online = totalOnline;
+                max = totalMax;
             }
         }
-        // 如果有多个服务器在线，显示总数
-        if (totalMax > 0 && messenger.getAllServerStatus().size() > 1) {
-            online = totalOnline;
-            max = totalMax;
-        }
+
         player.sendMessage(languageManager.getMessage("waiting",
                 "position", String.valueOf(position),
                 "online", String.valueOf(online),
@@ -218,6 +268,11 @@ public class PlayerJoinListener implements Listener {
         // 隐藏计分板
         if (plugin.getScoreboardManager() != null) {
             plugin.getScoreboardManager().hideScoreboard(player);
+        }
+        // WORLD 模式下保存玩家在主世界的退出位置
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            loginWorldManager.savePlayerQuitLocation(player);
         }
         allowedPlayers.remove(uuid);
         waitingQueue.removeIf(entry -> entry.getUuid().equals(uuid));
@@ -261,8 +316,13 @@ public class PlayerJoinListener implements Listener {
         }
 
         // 通知代理端玩家登录成功（允许使用 /server 命令）
+        // WORLD 模式下不需要通知代理端
         if (authManager.isEnabled()) {
-            messenger.notifyLoginSuccess(player);
+            LoginWorldManager lwm = plugin.getLoginWorldManager();
+            boolean worldMode = lwm != null && lwm.isWorldMode();
+            if (!worldMode) {
+                messenger.notifyLoginSuccess(player);
+            }
         }
 
         int priority = priorityManager.calculatePriority(player);
@@ -277,7 +337,22 @@ public class PlayerJoinListener implements Listener {
         }
         allowedPlayers.add(player.getUniqueId());
         player.sendMessage(languageManager.getMessage("entering"));
-        messenger.connectToOptimalServer(player);
+
+        // 清除队列物品（加入游戏按钮）
+        if (plugin.getQueueItemListener() != null) {
+            plugin.getQueueItemListener().removeAllQueueItems(player);
+        }
+
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        boolean worldMode = loginWorldManager != null && loginWorldManager.isWorldMode();
+
+        if (worldMode && loginWorldManager != null) {
+            // WORLD 模式：传送到主世界
+            loginWorldManager.teleportToMainWorld(player);
+        } else {
+            // PROXY 模式：通过代理端跳转
+            messenger.connectToOptimalServer(player);
+        }
     }
 
     public List<String> getQueuePlayerNames() {
@@ -388,24 +463,43 @@ public class PlayerJoinListener implements Listener {
         }
 
         Location spawnLocation = new Location(world, x, y, z, yaw, pitch);
-        player.teleport(spawnLocation);
+        SchedulerUtil.teleport(player, spawnLocation);
     }
 
     private void processQueue() {
-        // 计算所有在线主服务器的总人数和总容量
-        int totalMax = 0;
-        int totalOnline = 0;
-        boolean anyOnline = false;
-        for (BungeeMessenger.ServerStatus status : messenger.getAllServerStatus().values()) {
-            if (status.isOnline()) {
-                anyOnline = true;
-                int max = status.getMaxPlayers();
-                int online = status.getOnlinePlayers();
-                if (max <= 0) {
-                    max = plugin.getConfig().getInt("queue.max-online", 50);
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        boolean worldMode = loginWorldManager != null && loginWorldManager.isWorldMode();
+
+        int totalMax;
+        int totalOnline;
+        boolean anyOnline;
+
+        if (worldMode) {
+            // WORLD 模式：计算主世界在线人数
+            String mainWorldName = plugin.getConfig().getString("queue.spawn.world", "world");
+            World mainWorld = plugin.getServer().getWorld(mainWorldName);
+            if (mainWorld == null) {
+                mainWorld = plugin.getServer().getWorlds().get(0);
+            }
+            totalOnline = mainWorld != null ? mainWorld.getPlayers().size() : 0;
+            totalMax = plugin.getConfig().getInt("queue.max-online", 50);
+            anyOnline = mainWorld != null;
+        } else {
+            // PROXY 模式：计算所有在线主服务器的总人数和总容量
+            totalMax = 0;
+            totalOnline = 0;
+            anyOnline = false;
+            for (BungeeMessenger.ServerStatus status : messenger.getAllServerStatus().values()) {
+                if (status.isOnline()) {
+                    anyOnline = true;
+                    int max = status.getMaxPlayers();
+                    int online = status.getOnlinePlayers();
+                    if (max <= 0) {
+                        max = plugin.getConfig().getInt("queue.max-online", 50);
+                    }
+                    totalMax += max;
+                    totalOnline += online;
                 }
-                totalMax += max;
-                totalOnline += online;
             }
         }
 
@@ -453,7 +547,19 @@ public class PlayerJoinListener implements Listener {
             if (plugin.isDebug()) {
                 plugin.getLogger().info(languageManager.getLogMessage("queue-player-allowed", "player", player.getName()));
             }
-            messenger.connectToOptimalServer(player);
+
+            // 清除队列物品（加入游戏按钮）
+            if (plugin.getQueueItemListener() != null) {
+                plugin.getQueueItemListener().removeAllQueueItems(player);
+            }
+
+            if (worldMode && loginWorldManager != null) {
+                // WORLD 模式：传送到主世界
+                loginWorldManager.teleportToMainWorld(player);
+            } else {
+                // PROXY 模式：通过代理端跳转
+                messenger.connectToOptimalServer(player);
+            }
             availableSlots--;
         }
     }

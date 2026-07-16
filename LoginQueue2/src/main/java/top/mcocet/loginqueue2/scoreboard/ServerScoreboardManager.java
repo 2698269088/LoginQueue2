@@ -4,7 +4,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Score;
@@ -12,6 +11,7 @@ import org.bukkit.scoreboard.Scoreboard;
 import top.mcocet.loginqueue2.LoginQueue2;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2.util.LanguageManager;
+import top.mcocet.loginqueue2.util.SchedulerUtil;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,30 +48,22 @@ public class ServerScoreboardManager {
 
     private void startTasks() {
         // 更新计分板内容任务（每2秒）
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (!plugin.isEnabled()) {
-                    cancel();
-                    return;
-                }
-                updateAllScoreboards();
+        SchedulerUtil.runTaskTimer(plugin, () -> {
+            if (!plugin.isEnabled()) {
+                return;
             }
-        }.runTaskTimer(plugin, 20L, 40L);
+            updateAllScoreboards();
+        }, 20L, 40L);
 
         // 轮换显示服务器任务
         if (serverNames.size() > 1) {
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    if (!plugin.isEnabled()) {
-                        cancel();
-                        return;
-                    }
-                    currentServerIndex = (currentServerIndex + 1) % serverNames.size();
-                    updateAllScoreboards();
+            SchedulerUtil.runTaskTimer(plugin, () -> {
+                if (!plugin.isEnabled()) {
+                    return;
                 }
-            }.runTaskTimer(plugin, rotateInterval, rotateInterval);
+                currentServerIndex = (currentServerIndex + 1) % serverNames.size();
+                updateAllScoreboards();
+            }, rotateInterval, rotateInterval);
         }
     }
 
@@ -81,15 +73,31 @@ public class ServerScoreboardManager {
     public void showScoreboard(Player player) {
         if (!enabled) return;
 
-        Scoreboard scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
-        Objective objective = scoreboard.registerNewObjective("lq2servers", "dummy",
-                languageManager.getMessage("scoreboard-title"));
-        objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+        if (SchedulerUtil.isFolia()) {
+            SchedulerUtil.runTask(plugin, () -> {
+                Scoreboard scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
+                Objective objective = scoreboard.registerNewObjective("lq2servers", "dummy",
+                        languageManager.getMessage("scoreboard-title"));
+                objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+                playerScoreboards.put(player.getUniqueId(), scoreboard);
 
-        player.setScoreboard(scoreboard);
-        playerScoreboards.put(player.getUniqueId(), scoreboard);
-
-        updateScoreboard(player, scoreboard, objective);
+                SchedulerUtil.runPlayerTaskLater(player, plugin, () -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    player.setScoreboard(scoreboard);
+                    updateScoreboard(player, scoreboard, objective);
+                }, 1L);
+            });
+        } else {
+            Scoreboard scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
+            Objective objective = scoreboard.registerNewObjective("lq2servers", "dummy",
+                    languageManager.getMessage("scoreboard-title"));
+            objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+            playerScoreboards.put(player.getUniqueId(), scoreboard);
+            player.setScoreboard(scoreboard);
+            updateScoreboard(player, scoreboard, objective);
+        }
     }
 
     /**
@@ -97,32 +105,52 @@ public class ServerScoreboardManager {
      */
     public void hideScoreboard(Player player) {
         playerScoreboards.remove(player.getUniqueId());
-        player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
+        if (SchedulerUtil.isFolia()) {
+            SchedulerUtil.runPlayerTaskLater(player, plugin, () -> {
+                player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
+            }, 1L);
+        } else {
+            player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
+        }
     }
 
     /**
      * 更新所有玩家的计分板
      */
     private void updateAllScoreboards() {
-        for (Map.Entry<UUID, Scoreboard> entry : playerScoreboards.entrySet()) {
-            Player player = Bukkit.getPlayer(entry.getKey());
-            if (player == null || !player.isOnline()) continue;
-
-            Scoreboard scoreboard = entry.getValue();
-            Objective objective = scoreboard.getObjective("lq2servers");
-            if (objective == null) {
-                objective = scoreboard.registerNewObjective("lq2servers", "dummy",
-                        languageManager.getMessage("scoreboard-title"));
-                objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+        for (UUID uuid : new ArrayList<>(playerScoreboards.keySet())) {
+            Player player = Bukkit.getPlayer(uuid);
+            if (player == null || !player.isOnline()) {
+                playerScoreboards.remove(uuid);
+                continue;
             }
 
-            // 清除旧行
-            for (String entryName : scoreboard.getEntries()) {
-                scoreboard.resetScores(entryName);
+            if (SchedulerUtil.isFolia()) {
+                SchedulerUtil.runPlayerTaskLater(player, plugin, () -> updatePlayerScoreboard(player), 1L);
+            } else {
+                updatePlayerScoreboard(player);
             }
-
-            updateScoreboard(player, scoreboard, objective);
         }
+    }
+
+    private void updatePlayerScoreboard(Player player) {
+        Scoreboard scoreboard = playerScoreboards.get(player.getUniqueId());
+        if (scoreboard == null) {
+            return;
+        }
+
+        Objective objective = scoreboard.getObjective("lq2servers");
+        if (objective == null) {
+            objective = scoreboard.registerNewObjective("lq2servers", "dummy",
+                    languageManager.getMessage("scoreboard-title"));
+            objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+        }
+
+        for (String entryName : scoreboard.getEntries()) {
+            scoreboard.resetScores(entryName);
+        }
+
+        updateScoreboard(player, scoreboard, objective);
     }
 
     /**

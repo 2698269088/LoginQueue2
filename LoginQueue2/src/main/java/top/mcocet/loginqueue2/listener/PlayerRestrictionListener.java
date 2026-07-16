@@ -14,12 +14,17 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerPickupItemEvent;
 import top.mcocet.loginqueue2.LoginQueue2;
+import top.mcocet.loginqueue2.world.LoginWorldManager;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -30,6 +35,7 @@ public class PlayerRestrictionListener implements Listener {
     private final Set<UUID> allowedPlayers;
     private final Location spawnCenter;
     private final double protectionRadius;
+    private final Set<String> worldModeAllowedCommands = new HashSet<>();
 
     public PlayerRestrictionListener(LoginQueue2 plugin, PlayerJoinListener playerJoinListener, Set<UUID> allowedPlayers) {
         this.plugin = plugin;
@@ -46,6 +52,45 @@ public class PlayerRestrictionListener implements Listener {
         double centerZ = plugin.getConfig().getDouble("queue.spawn.z", 0.0);
         this.spawnCenter = new Location(world, centerX, centerY, centerZ);
         this.protectionRadius = Math.max(0, plugin.getConfig().getDouble("queue.spawn-protection-radius", 0.0));
+        loadWorldModeAllowedCommands();
+    }
+
+    public void loadWorldModeAllowedCommands() {
+        worldModeAllowedCommands.clear();
+        // 默认允许的基础命令
+        worldModeAllowedCommands.add("/join");
+        worldModeAllowedCommands.add("/logseq");
+        worldModeAllowedCommands.add("/ls");
+        // 从配置文件加载额外命令
+        List<String> configCommands = plugin.getConfig().getStringList("world-mode.allowed-commands");
+        for (String cmd : configCommands) {
+            String normalized = cmd.trim().toLowerCase(Locale.ROOT);
+            if (!normalized.isEmpty() && !normalized.startsWith("/")) {
+                normalized = "/" + normalized;
+            }
+            if (!normalized.isEmpty()) {
+                worldModeAllowedCommands.add(normalized);
+            }
+        }
+    }
+
+    private boolean isInLoginWorldRestricted(Player player) {
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager == null || !loginWorldManager.isWorldMode()) {
+            return false;
+        }
+        // 只有在登录世界且未被放行的玩家才受限制
+        if (!loginWorldManager.isInLoginWorld(player)) {
+            return false;
+        }
+        if (allowedPlayers.contains(player.getUniqueId())) {
+            return false;
+        }
+        boolean adminBypass = plugin.getConfig().getBoolean("queue.admin-bypass", true);
+        if (adminBypass && player.hasPermission("loginqueue2.admin.bypass")) {
+            return false;
+        }
+        return true;
     }
 
     private boolean isInProtectionArea(Location location) {
@@ -62,6 +107,14 @@ public class PlayerRestrictionListener implements Listener {
     }
 
     private boolean isRestricted(Player player) {
+        // WORLD 模式下，不在登录世界的玩家不受限制
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            if (!loginWorldManager.isInLoginWorld(player)) {
+                return false;
+            }
+        }
+
         if (allowedPlayers.contains(player.getUniqueId())) {
             return false;
         }
@@ -242,5 +295,18 @@ public class PlayerRestrictionListener implements Listener {
         }
 
         event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerCommand(PlayerCommandPreprocessEvent event) {
+        Player player = event.getPlayer();
+        if (!isInLoginWorldRestricted(player)) {
+            return;
+        }
+        String cmd = event.getMessage().split(" ")[0].toLowerCase(Locale.ROOT);
+        if (!worldModeAllowedCommands.contains(cmd)) {
+            event.setCancelled(true);
+            player.sendMessage(plugin.getLanguageManager().getMessage("world-mode-command-restricted"));
+        }
     }
 }

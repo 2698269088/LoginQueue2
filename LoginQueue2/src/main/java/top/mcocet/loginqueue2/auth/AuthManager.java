@@ -1,5 +1,8 @@
 package top.mcocet.loginqueue2.auth;
 
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -13,6 +16,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.sql.*;
 import java.util.Locale;
+import java.util.UUID;
 import top.mcocet.loginqueue2.util.LanguageManager;
 import java.util.logging.Level;
 
@@ -31,9 +35,7 @@ public class AuthManager {
         this.plugin = plugin;
         this.languageManager = ((top.mcocet.loginqueue2.LoginQueue2) plugin).getLanguageManager();
         this.enabled = plugin.getConfig().getBoolean("auth.enabled", false);
-        if (enabled) {
-            initDatabase();
-        }
+        initDatabase();
     }
 
     private void initDatabase() {
@@ -52,10 +54,48 @@ public class AuthManager {
                         + "regdate INTEGER DEFAULT 0,"
                         + "regip TEXT"
                         + ")");
+                stmt.execute("CREATE TABLE IF NOT EXISTS player_locations ("
+                        + "uuid TEXT PRIMARY KEY NOT NULL,"
+                        + "world TEXT NOT NULL,"
+                        + "x REAL NOT NULL,"
+                        + "y REAL NOT NULL,"
+                        + "z REAL NOT NULL,"
+                        + "yaw REAL NOT NULL,"
+                        + "pitch REAL NOT NULL,"
+                        + "gamemode TEXT,"
+                        + "updated_at INTEGER NOT NULL"
+                        + ")");
+                // 表结构迁移：为旧版本数据库添加 gamemode 列
+                migrateAddGamemodeColumn(stmt);
             }
-            plugin.getLogger().info(languageManager.getLogMessage("auth-db-initialized"));
+            if (enabled) {
+                plugin.getLogger().info(languageManager.getLogMessage("auth-db-initialized"));
+            }
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, languageManager.getLogMessage("auth-db-init-failed"), e);
+        }
+    }
+
+    /**
+     * 检查并添加 gamemode 列到 player_locations 表（用于旧版本数据库升级）
+     */
+    private void migrateAddGamemodeColumn(Statement stmt) {
+        try {
+            boolean hasGamemode = false;
+            try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(player_locations)")) {
+                while (rs.next()) {
+                    if ("gamemode".equalsIgnoreCase(rs.getString("name"))) {
+                        hasGamemode = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasGamemode) {
+                stmt.execute("ALTER TABLE player_locations ADD COLUMN gamemode TEXT");
+                plugin.getLogger().info("Migrated player_locations table: added gamemode column.");
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to migrate player_locations table", e);
         }
     }
 
@@ -189,6 +229,115 @@ public class AuthManager {
             } catch (SQLException e) {
                 plugin.getLogger().log(Level.WARNING, languageManager.getLogMessage("auth-close-db-failed"), e);
             }
+        }
+    }
+
+    // ==================== 玩家位置存储（供 WORLD 模式使用） ====================
+
+    /**
+     * 保存玩家的退出位置到数据库
+     */
+    public void savePlayerLocation(UUID uuid, Location location) {
+        savePlayerLocation(uuid, location, null);
+    }
+
+    /**
+     * 保存玩家的退出位置和游戏模式到数据库
+     */
+    public void savePlayerLocation(UUID uuid, Location location, GameMode gameMode) {
+        if (connection == null || location == null || location.getWorld() == null) {
+            return;
+        }
+        String sql = "INSERT OR REPLACE INTO player_locations (uuid, world, x, y, z, yaw, pitch, gamemode, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, uuid.toString());
+            ps.setString(2, location.getWorld().getName());
+            ps.setDouble(3, location.getX());
+            ps.setDouble(4, location.getY());
+            ps.setDouble(5, location.getZ());
+            ps.setFloat(6, location.getYaw());
+            ps.setFloat(7, location.getPitch());
+            ps.setString(8, gameMode != null ? gameMode.name() : null);
+            ps.setLong(9, System.currentTimeMillis());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to save player location for " + uuid, e);
+        }
+    }
+
+    /**
+     * 从数据库获取玩家保存的退出位置
+     */
+    public Location getPlayerLocation(UUID uuid) {
+        if (connection == null) {
+            return null;
+        }
+        String sql = "SELECT world, x, y, z, yaw, pitch FROM player_locations WHERE uuid = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, uuid.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String worldName = rs.getString("world");
+                    World world = plugin.getServer().getWorld(worldName);
+                    if (world == null) {
+                        plugin.getLogger().warning("World '" + worldName + "' not found for saved location of player " + uuid);
+                        return null;
+                    }
+                    double x = rs.getDouble("x");
+                    double y = rs.getDouble("y");
+                    double z = rs.getDouble("z");
+                    float yaw = rs.getFloat("yaw");
+                    float pitch = rs.getFloat("pitch");
+                    return new Location(world, x, y, z, yaw, pitch);
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to get player location for " + uuid, e);
+        }
+        return null;
+    }
+
+    /**
+     * 从数据库获取玩家保存的游戏模式
+     */
+    public GameMode getPlayerGameMode(UUID uuid) {
+        if (connection == null) {
+            return null;
+        }
+        String sql = "SELECT gamemode FROM player_locations WHERE uuid = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, uuid.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String modeStr = rs.getString("gamemode");
+                    if (modeStr != null && !modeStr.isEmpty()) {
+                        try {
+                            return GameMode.valueOf(modeStr);
+                        } catch (IllegalArgumentException e) {
+                            plugin.getLogger().warning("Invalid gamemode '" + modeStr + "' for player " + uuid);
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to get player gamemode for " + uuid, e);
+        }
+        return null;
+    }
+
+    /**
+     * 删除玩家保存的位置记录
+     */
+    public void deletePlayerLocation(UUID uuid) {
+        if (connection == null) {
+            return;
+        }
+        String sql = "DELETE FROM player_locations WHERE uuid = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, uuid.toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to delete player location for " + uuid, e);
         }
     }
 }

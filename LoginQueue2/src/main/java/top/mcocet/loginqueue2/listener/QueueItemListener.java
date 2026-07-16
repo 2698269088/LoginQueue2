@@ -18,6 +18,12 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import top.mcocet.loginqueue2.LoginQueue2;
 import top.mcocet.loginqueue2.util.LanguageManager;
+import top.mcocet.loginqueue2.util.SchedulerUtil;
+import top.mcocet.loginqueue2.world.LoginWorldManager;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 public class QueueItemListener implements Listener {
 
@@ -28,6 +34,8 @@ public class QueueItemListener implements Listener {
     private final Material material;
     private final String itemName;
     private final LanguageManager languageManager;
+
+    private final Map<UUID, ItemStack> savedItems = new HashMap<>();
 
     public QueueItemListener(LoginQueue2 plugin, PlayerJoinListener listener) {
         this.plugin = plugin;
@@ -183,6 +191,14 @@ public class QueueItemListener implements Listener {
             return;
         }
 
+        // WORLD 模式下直接入队，不需要检查 BungeeCord 主服务器
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            listener.addPlayerToQueue(player);
+            player.sendMessage(languageManager.getMessage("joined-queue"));
+            return;
+        }
+
         // UDP 优先模式下直接信任缓存，跳过实时检测
         boolean udpPreferred = plugin.getConfig().getBoolean("udp-sync.enabled", false)
                 && "UDP".equalsIgnoreCase(plugin.getConfig().getString("udp-sync.priority", "BC_CHANNEL"));
@@ -209,7 +225,7 @@ public class QueueItemListener implements Listener {
         // 缓存中没有有效数据或显示离线，进行实时检测（BC 优先模式下首次连接时缓存可能为空）
         player.sendMessage(languageManager.getMessage("checking-main-server"));
         plugin.getMessenger().checkMainServerOnlineAsync(3).whenComplete((online, throwable) -> {
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
+            SchedulerUtil.runTask(plugin, () -> {
                 if (throwable != null || !online) {
                     player.sendMessage(languageManager.getMessage("main-offline"));
                     return;
@@ -233,6 +249,42 @@ public class QueueItemListener implements Listener {
             meta.setDisplayName(itemName);
             item.setItemMeta(meta);
         }
+        // 保存该槽位原有物品（如果不是队列物品）
+        ItemStack existing = player.getInventory().getItem(slot);
+        if (existing != null && !isQueueItem(existing)) {
+            savedItems.put(player.getUniqueId(), existing.clone());
+        }
         player.getInventory().setItem(slot, item);
+    }
+
+    /**
+     * 清除玩家的队列物品（加入游戏按钮），并恢复原有物品
+     */
+    public void removeQueueItem(Player player) {
+        ItemStack item = player.getInventory().getItem(slot);
+        if (isQueueItem(item)) {
+            player.getInventory().setItem(slot, null);
+        }
+        // 恢复原有物品
+        ItemStack saved = savedItems.remove(player.getUniqueId());
+        if (saved != null) {
+            player.getInventory().setItem(slot, saved);
+        }
+    }
+
+    /**
+     * 清除玩家物品栏中所有队列物品（扫描全部槽位），并恢复原有物品
+     */
+    public void removeAllQueueItems(Player player) {
+        for (int i = 0; i < player.getInventory().getSize(); i++) {
+            if (isQueueItem(player.getInventory().getItem(i))) {
+                player.getInventory().setItem(i, null);
+            }
+        }
+        // 恢复原有物品
+        ItemStack saved = savedItems.remove(player.getUniqueId());
+        if (saved != null) {
+            player.getInventory().setItem(slot, saved);
+        }
     }
 }

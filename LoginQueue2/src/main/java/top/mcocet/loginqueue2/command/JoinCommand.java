@@ -8,6 +8,8 @@ import top.mcocet.loginqueue2.LoginQueue2;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2.listener.PlayerJoinListener;
 import top.mcocet.loginqueue2.util.LanguageManager;
+import top.mcocet.loginqueue2.util.SchedulerUtil;
+import top.mcocet.loginqueue2.world.LoginWorldManager;
 
 public class JoinCommand implements CommandExecutor {
 
@@ -43,6 +45,14 @@ public class JoinCommand implements CommandExecutor {
             return true;
         }
 
+        // WORLD 模式下直接入队，不需要检查 BungeeCord 主服务器
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            listener.addPlayerToQueue(player);
+            player.sendMessage(languageManager.getMessage("joined-queue"));
+            return true;
+        }
+
         // 检查是否有任何主服务器在线（基于缓存）
         boolean anyOnline = false;
         for (BungeeMessenger.ServerStatus status : plugin.getMessenger().getAllServerStatus().values()) {
@@ -62,7 +72,7 @@ public class JoinCommand implements CommandExecutor {
         // 缓存中没有在线服务器，进行实时检测（BC 优先模式下首次连接时缓存可能为空）
         player.sendMessage(languageManager.getMessage("checking-main-server"));
         plugin.getMessenger().checkMainServerOnlineAsync(3).whenComplete((online, throwable) -> {
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
+            SchedulerUtil.runTask(plugin, () -> {
                 if (throwable != null || !online) {
                     player.sendMessage(languageManager.getMessage("main-offline"));
                     return;

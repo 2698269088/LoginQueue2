@@ -1,7 +1,8 @@
 name: LoginQueue2
 version: '${project.version}'
-main: top.mcocet.loginqueue2.LoginQueue
+main: top.mcocet.loginqueue2.LoginQueue2
 api-version: '1.13'
+folia-supported: true
 authors: [MCOCET]
 description: 登录队列
 website: https://home.mcocet.top

@@ -8,6 +8,7 @@ import org.bukkit.entity.Player;
 import top.mcocet.loginqueue2.LoginQueue2;
 import top.mcocet.loginqueue2.listener.PlayerJoinListener;
 import top.mcocet.loginqueue2.util.LanguageManager;
+import top.mcocet.loginqueue2.world.LoginWorldManager;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -120,6 +121,11 @@ public class AuthCommand implements CommandExecutor {
                 playerJoinListener.addPlayerToQueue(player);
             } else {
                 player.sendMessage(languageManager.getMessage("auth-manual-join"));
+                // WORLD 模式下，如果不自动排队，直接传送到主世界
+                LoginWorldManager lwm = plugin.getLoginWorldManager();
+                if (lwm != null && lwm.isWorldMode()) {
+                    lwm.teleportToMainWorld(player);
+                }
             }
         } else {
             player.sendMessage(languageManager.getMessage("auth-register-fail"));
@@ -167,6 +173,11 @@ public class AuthCommand implements CommandExecutor {
                 playerJoinListener.addPlayerToQueue(player);
             } else {
                 player.sendMessage(languageManager.getMessage("auth-manual-join"));
+                // WORLD 模式下，如果不自动排队，直接传送到主世界
+                LoginWorldManager lwm = plugin.getLoginWorldManager();
+                if (lwm != null && lwm.isWorldMode()) {
+                    lwm.teleportToMainWorld(player);
+                }
             }
         } else {
             loginCooldown.put(player.getUniqueId(), now);
