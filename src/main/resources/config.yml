@@ -1,0 +1,232 @@
+# 插件语言（支持 zh_CN、zh_TW、en_US）
+language: zh_CN
+
+# 工作模式配置
+# PROXY 登录服模式（通过BungeeCord/Velocity跳转）
+# WORLD 登录世界模式（在同一服务器内创建登录世界）
+# WORLD模式下还需要修改queue.spawn.world 配置项，指定出生世界
+# 注意：WORLD模式下需要依赖Worlds插件创建登录世界，并且设置名称不要和主世界一致
+# Worlds插件仓库： https://github.com/TheNextLvl-net/worlds
+work-mode: PROXY
+
+# 是否启用 BungeeCord 通道扩展（需要配合 LoginQueue2BC 使用，WORLD模式下无效）
+enable-bungee-extension: false
+
+# 是否启用调试日志（输出详细的插件运行信息）
+debug: false
+
+# 认证系统配置
+# 此功能是为了解决Limbo服务器无可用的认证/登录插件
+# Bukkit环境建议关闭，使用更专业的AuthMe等认证插件
+# 如果要使用，建议搭配BC/VC插件使用，放在玩家跳过登录，直接使用/server命令
+auth:
+  # 是否启用登录/注册认证功能
+  enabled: false
+  # 密码最小长度
+  min-password-length: 4
+  # 密码最大长度
+  max-password-length: 32
+  # 注册命令冷却时间（秒）
+  register-cooldown: 5
+  # 登录命令冷却时间（秒）
+  login-cooldown: 1
+  # 登录成功后是否自动加入排队队列
+  auto-queue-after-login: false
+  # 未登录/未注册玩家允许执行的命令列表（除默认命令外可额外配置）
+  # 默认允许: /login, /register, /changepassword, /changepw, /logseq, /ls, /server, /join
+  # 如需添加更多命令，请在此列表中添加（不需要加斜杠，插件会自动处理）
+  allowed-commands: []
+
+# UDP 服务器信息同步配置
+# WORLD模式下无需配置
+udp-sync:
+  # 是否启用 UDP 服务器信息同步
+  enabled: false
+  # 信息获取优先级: BC_CHANNEL 先使用 BungeeCord 消息通道, UDP 先使用 UDP, MSLP 先使用 Minecraft Server List Ping
+  priority: BC_CHANNEL
+  # UDP 请求超时时间（毫秒）
+  timeout: 3000
+  # 计划好的预共享密钥（用于加密传输通信密钥，防止窃听）
+  # 此密钥只能手动配置，不会通过网络传输，建议两端配置相同
+  # 建议修改为非预设密钥
+  planned-key: "loginqueue2"
+  # 主服务器列表（支持多主服务器负载均衡）
+  # 考虑到使用多大厅的用户基本都是大型服务器
+  # 大概率也就有多个BC/VC端
+  # 所以这里仅通知BC/VC跳转到main-server配置的主服转移玩家
+  servers:
+    - name: "main1"
+      host: "127.0.0.1"
+      port: 16647
+      # Minecraft 游戏端口（用于 MSLP 协议直连查询）
+      # 若设置则直接通过 MSLP 协议查询该端口
+      # 若不设置（注释掉或留空），MSLP 优先模式下会通过 BungeeCord 原生 ServerIP 协议获取端口后再查询
+      game-port:
+      secret-key: ""
+      max-online: 50
+    - name: "main2"
+      host: "127.0.0.1"
+      port: 16648
+      game-port:
+      secret-key: ""
+      max-online: 50
+    # - name: "main3"
+    #   host: "127.0.0.1"
+    #   port: 16649
+    #   secret-key: ""
+    #   max-online: 50
+
+# 登录队列配置
+queue:
+  # 主服务器在 BungeeCord 中的名称（单服务器模式使用，多服务器模式请使用 udp-sync.servers）
+  main-server: "main"
+  # 主服务器最大可连接玩家数（通过配置文件设置，单服务器模式使用）
+  max-online: 50
+  # 负载均衡策略: LEAST_PLAYERS 最少玩家, LEAST_LOAD 最低负载, ROUND_ROBIN 轮询, RANDOM 随机
+  balance-strategy: LEAST_PLAYERS
+  # 是否启用优先队列系统
+  priority-enabled: true
+  # 排序优先级规则（越靠前默认权重越高，也可自定义权重）
+  # 支持以下匹配方式：
+  #   permission:权限节点[:权重]  - 拥有指定权限的玩家
+  #   name:玩家名[:权重]          - 指定玩家名（精确匹配）
+  #   uuid:玩家UUID[:权重]        - 指定玩家UUID
+  #   regex:正则表达式[:权重]      - 玩家名匹配正则表达式
+  #   group:权限组名[:权重]        - 拥有指定权限组的玩家（通过 group.组名 权限检测）
+  # 权重越高优先级越高，不指定权重时按列表顺序递减（第一条100，第二条99...）
+  priority:
+    - "permission:loginqueue2.vip:100"
+    - "permission:loginqueue2.priority:80"
+    - "regex:^[A-Z].*:50"
+    - "name:Player1:90"
+  # 默认优先级（数字越大越优先）
+  default-priority: 0
+  # 向 BungeeCord 刷新主服信息的周期（秒）
+  refresh-interval: 5
+  # 主服务器离线时的刷新周期（秒）
+  offline-refresh-interval: 10
+  # 主服务器连接阈值（0.0 - 1.0），超过此百分比时暂停放行新玩家
+  threshold: 0.8
+  # 是否限制排队中的玩家移动
+  restrict-movement: false
+  # 是否开启性能节省模式（禁用生物生成、时间流逝、天气更替）
+  performance-mode: true
+  # 玩家加入后是否自动进入排队队列
+  auto-queue: false
+  # 玩家加入后锁定等待的时间（秒），在此期间玩家无法交互
+  lock-time: 3
+  # 是否设置玩家加入后的游戏模式
+  set-gamemode: true
+  # 玩家加入后的游戏模式（SURVIVAL, CREATIVE, ADVENTURE, SPECTATOR）
+  gamemode: ADVENTURE
+  # 是否允许玩家与方块交互（点击按钮、开门等）
+  allow-block-interact: false
+  # 是否允许玩家放置方块
+  allow-block-place: false
+  # 是否允许玩家破坏方块
+  allow-block-break: false
+  # 是否禁用下界维度（禁止玩家进入或传送到 NETHER）
+  disable-nether: true
+  # 是否禁用末地维度（禁止玩家进入或传送到 THE_END）
+  disable-end: true
+  # 是否禁用传送门（禁止玩家通过任何传送门进行传送）
+  disable-portals: true
+  # 管理员是否不受上述限制（拥有 loginqueue2.admin.bypass 权限）
+  admin-bypass: true
+  # 是否限制玩家活动范围（超出范围拉回中心）
+  restrict-range: false
+  # 玩家活动范围限制（以出生点为中心，单位为方块）
+  range-limit: 10
+  # 登录点保护（禁止爆炸、取消玩家伤害、禁止 PVP）
+  spawn-protection: true
+  # 登录点保护区域半径（以出生点为中心，0 表示全地图保护）
+  spawn-protection-radius: 0
+  # 玩家出生点配置
+  spawn:
+    # 出生点世界
+    world: "world"
+    # 出生点中心 X 坐标
+    x: 0.0
+    # 出生点中心 Y 坐标
+    y: -63.0
+    # 出生点中心 Z 坐标
+    z: 0.0
+    # 出生点朝向（俯仰角）
+    pitch: 0.0
+    # 出生点朝向（偏航角）
+    yaw: 0.0
+    # 随机出生半径（在中心点周围此半径内随机生成位置，0 表示固定位置）
+    radius: 8.5
+  # 手动排队时发放的物品配置
+  queue-item:
+    # 物品所在槽位（0-8 为主手栏）
+    slot: 4
+    # 物品类型
+    material: BEACON
+    # 物品显示名称
+    name: "&a加入游戏"
+
+# 登录世界配置（仅在 work-mode: WORLD 时生效）
+login-world:
+  # 世界的命名空间ID（格式: 命名空间:路径）
+  key: "loginqueue2:login"
+  # 世界维度: OVERWORLD, THE_NETHER, THE_END
+  dimension: OVERWORLD
+  # 世界生成器类型: FLAT, NORMAL, LARGE_BIOMES, AMPLIFIED, DEBUG, SINGLE_BIOME
+  generator-type: FLAT
+  # 世界种子（留空则随机生成）
+  seed: ""
+  # 是否生成结构
+  structures: false
+  # 是否生成奖励箱
+  bonus-chest: false
+  # 是否硬核模式
+  hardcore: false
+  # 锁定时间为中午
+  lock-daytime: true
+  # 禁用天气更替
+  disable-weather: true
+  # 禁用生物自然生成
+  disable-mob-spawning: true
+  # 禁用 PvP
+  disable-pvp: true
+  # 性能模式（禁用时间流逝、天气、生物生成、随机刻、火焰蔓延）
+  performance-mode: true
+  # 玩家出生点配置
+  spawn:
+    x: 0.0
+    y: 64.0
+    z: 0.0
+    pitch: 0.0
+    yaw: 0.0
+
+# WORLD 模式下登录维度命令白名单配置
+# 当插件工作在 WORLD 模式时，留在登录维度且未加入游戏的玩家
+# 只能执行以下指定的命令（登录成功/加入游戏后不受限制）
+world-mode:
+  # 未放行玩家允许执行的额外命令列表（不需要加斜杠，插件会自动处理）
+  # 默认已允许: /join, /logseq, /ls
+  allowed-commands: []
+  # 主世界未授权玩家监控间隔（秒）
+  # 插件会定期检查主世界中是否有未排队/未放行的玩家，并将其传送回登录世界
+  # 设置为 0 可禁用监控
+  monitor-interval: 5
+
+# 服务器状态计分板配置
+scoreboard:
+  # 是否启用服务器状态计分板
+  enabled: false
+  # 轮换显示服务器的间隔（秒）
+  rotate-interval: 10
+  # 要在计分板中显示的服务器列表
+  servers:
+    - "main"
+    - "main1"
+    - "main2"
+
+messages:
+  waiting: "&a[登录队列] &f你当前排在第 &e{position} &f位，主服在线 &e{online}&f/&e{max}&f，请耐心等待..."
+  entering: "&a[登录队列] &f你可以进入服务器了！"
+  main-offline: "&c[登录队列] &f主服务器当前离线，请稍后再试..."
+  threshold-reached: "&c[登录队列] &f主服务器负载较高，排队暂停，请耐心等待..."
+  manual-queue-hint: "&a[登录队列] &f请左击物品栏中的“加入游戏”按钮"
