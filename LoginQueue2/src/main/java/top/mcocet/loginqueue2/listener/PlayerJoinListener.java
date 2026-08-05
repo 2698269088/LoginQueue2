@@ -15,6 +15,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 import top.mcocet.loginqueue2.LoginQueue2;
 import top.mcocet.loginqueue2.auth.AuthManager;
 import top.mcocet.loginqueue2.auth.AuthRestrictionListener;
+import top.mcocet.loginqueue2.auth.AuthMeCompatManager;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2.queue.PriorityManager;
 import top.mcocet.loginqueue2.util.LanguageManager;
@@ -29,6 +30,7 @@ public class PlayerJoinListener implements Listener {
     private final BungeeMessenger messenger;
     private final AuthManager authManager;
     private final AuthRestrictionListener authRestrictionListener;
+    private final AuthMeCompatManager authMeCompatManager;
     private final double threshold;
     private final LanguageManager languageManager;
     private final PriorityManager priorityManager;
@@ -41,11 +43,13 @@ public class PlayerJoinListener implements Listener {
     private boolean queuePaused = false;
 
     public PlayerJoinListener(LoginQueue2 plugin, BungeeMessenger messenger,
-                              AuthManager authManager, AuthRestrictionListener authRestrictionListener) {
+                              AuthManager authManager, AuthRestrictionListener authRestrictionListener,
+                              AuthMeCompatManager authMeCompatManager) {
         this.plugin = plugin;
         this.messenger = messenger;
         this.authManager = authManager;
         this.authRestrictionListener = authRestrictionListener;
+        this.authMeCompatManager = authMeCompatManager;
         FileConfiguration config = plugin.getConfig();
         this.threshold = Math.max(0.0, Math.min(1.0, config.getDouble("queue.threshold", 0.8)));
         this.languageManager = plugin.getLanguageManager();
@@ -97,8 +101,11 @@ public class PlayerJoinListener implements Listener {
         LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
         boolean worldMode = loginWorldManager != null && loginWorldManager.isWorldMode();
 
-        // 设置玩家游戏模式
-        applyGameMode(player);
+        // WORLD 模式下不要在主世界提前切换游戏模式，
+        // 等玩家真正进入登录世界后再应用登录世界配置。
+        if (!worldMode) {
+            applyGameMode(player);
+        }
 
         // 设置玩家出生点（延迟1 tick执行，避免Folia上teleportAsync冲突）
         if (worldMode && loginWorldManager != null) {
@@ -123,8 +130,11 @@ public class PlayerJoinListener implements Listener {
             return;
         }
 
+        // 根据优先级判断使用哪种认证系统
+        String activeAuth = plugin.getActiveAuthSystem();
+
         // 认证功能启用时，未认证玩家不自动入队
-        if (authManager.isEnabled()) {
+        if ("BUILTIN".equals(activeAuth)) {
             authRestrictionListener.removeAuthenticated(uuid);
             if (!authManager.isRegistered(player.getName())) {
                 player.sendMessage(languageManager.getMessage("auth-welcome-register"));
@@ -132,6 +142,14 @@ public class PlayerJoinListener implements Listener {
                 player.sendMessage(languageManager.getMessage("auth-welcome-login"));
             }
             return;
+        }
+
+        // AuthMe 兼容模式：检查玩家是否已通过 AuthMe 登录
+        if ("AUTHME".equals(activeAuth)) {
+            if (!authMeCompatManager.isAuthenticated(player)) {
+                player.sendMessage(languageManager.getMessage("authme-please-login-first"));
+                return;
+            }
         }
 
         boolean autoQueue = plugin.getConfig().getBoolean("queue.auto-queue", true);
@@ -307,17 +325,28 @@ public class PlayerJoinListener implements Listener {
             return;
         }
 
+        // 根据优先级判断使用哪种认证系统
+        String activeAuth = plugin.getActiveAuthSystem();
+
         // 认证模式下，必须先通过登录认证才能入队
-        if (authManager.isEnabled() && authRestrictionListener != null) {
+        if ("BUILTIN".equals(activeAuth) && authRestrictionListener != null) {
             if (!authRestrictionListener.isAuthenticated(player.getUniqueId())) {
                 player.sendMessage(languageManager.getMessage("auth-please-login-first"));
                 return;
             }
         }
 
+        // AuthMe 兼容模式：检查玩家是否已通过 AuthMe 登录
+        if ("AUTHME".equals(activeAuth)) {
+            if (!authMeCompatManager.isAuthenticated(player)) {
+                player.sendMessage(languageManager.getMessage("authme-please-login-first"));
+                return;
+            }
+        }
+
         // 通知代理端玩家登录成功（允许使用 /server 命令）
         // WORLD 模式下不需要通知代理端
-        if (authManager.isEnabled()) {
+        if ("BUILTIN".equals(activeAuth)) {
             LoginWorldManager lwm = plugin.getLoginWorldManager();
             boolean worldMode = lwm != null && lwm.isWorldMode();
             if (!worldMode) {
@@ -338,16 +367,17 @@ public class PlayerJoinListener implements Listener {
         allowedPlayers.add(player.getUniqueId());
         player.sendMessage(languageManager.getMessage("entering"));
 
-        // 清除队列物品（加入游戏按钮）
-        if (plugin.getQueueItemListener() != null) {
-            plugin.getQueueItemListener().removeAllQueueItems(player);
-        }
-
         LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
         boolean worldMode = loginWorldManager != null && loginWorldManager.isWorldMode();
 
+        // 非 WORLD 模式下清除队列物品（WORLD 模式由 WorldInventoryListener 处理）
+        if (!worldMode && plugin.getQueueItemListener() != null) {
+            plugin.getQueueItemListener().removeAllQueueItems(player);
+        }
+
         if (worldMode && loginWorldManager != null) {
             // WORLD 模式：传送到主世界
+            // 背包恢复由 WorldInventoryListener 在 PlayerChangedWorldEvent 中处理
             loginWorldManager.teleportToMainWorld(player);
         } else {
             // PROXY 模式：通过代理端跳转
@@ -548,13 +578,14 @@ public class PlayerJoinListener implements Listener {
                 plugin.getLogger().info(languageManager.getLogMessage("queue-player-allowed", "player", player.getName()));
             }
 
-            // 清除队列物品（加入游戏按钮）
-            if (plugin.getQueueItemListener() != null) {
+            // 非 WORLD 模式下清除队列物品（WORLD 模式由 WorldInventoryListener 处理）
+            if (!worldMode && plugin.getQueueItemListener() != null) {
                 plugin.getQueueItemListener().removeAllQueueItems(player);
             }
 
             if (worldMode && loginWorldManager != null) {
                 // WORLD 模式：传送到主世界
+                // 背包恢复由 WorldInventoryListener 在 PlayerChangedWorldEvent 中处理
                 loginWorldManager.teleportToMainWorld(player);
             } else {
                 // PROXY 模式：通过代理端跳转

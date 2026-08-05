@@ -80,20 +80,39 @@ public class PlayerMoveListener implements Listener {
         }
 
         // 限制活动范围
-        if (restrictRange && centerLocation.getWorld() != null) {
+        if (restrictRange) {
+            Location effectiveCenter = getEffectiveCenterLocation();
+            if (effectiveCenter == null || effectiveCenter.getWorld() == null) {
+                return;
+            }
             Location to = event.getTo();
-            if (!to.getWorld().equals(centerLocation.getWorld())) {
-                SchedulerUtil.teleport(player, centerLocation);
+            if (!to.getWorld().equals(effectiveCenter.getWorld())) {
+                SchedulerUtil.teleport(player, effectiveCenter);
                 event.setCancelled(true);
                 return;
             }
-            double distance = to.distance(centerLocation);
+            double distance = to.distance(effectiveCenter);
             if (distance > rangeLimit) {
-                Location safeLocation = pullBackLocation(to, centerLocation, rangeLimit);
+                Location safeLocation = pullBackLocation(to, effectiveCenter, rangeLimit);
                 SchedulerUtil.teleport(player, safeLocation);
                 event.setCancelled(true);
             }
         }
+    }
+
+    /**
+     * 获取有效的中心点位置
+     * WORLD 模式下使用登录世界的出生点，否则使用配置的中心点
+     */
+    private Location getEffectiveCenterLocation() {
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            Location loginSpawn = loginWorldManager.getLoginSpawnLocation();
+            if (loginSpawn != null) {
+                return loginSpawn;
+            }
+        }
+        return centerLocation;
     }
 
     private Location pullBackLocation(Location current, Location center, double limit) {

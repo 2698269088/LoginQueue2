@@ -6,6 +6,7 @@ folia-supported: true
 authors: [MCOCET]
 description: 登录队列
 website: https://home.mcocet.top
+softdepend: [AuthMe]
 
 # 自定义消息通道（Paper 1.21+ 必须全小写，BungeeCord 为内置通道无需声明）
 channels:
@@ -52,6 +53,9 @@ permissions:
     default: op
   loginqueue2.admin.pause:
     description: 允许暂停/恢复队列
+    default: op
+  loginqueue2.admin.migrate:
+    description: 允许迁移玩家认证数据
     default: op
   loginqueue2.admin.bypass:
     description: 不受登录服限制

@@ -82,8 +82,12 @@ public class ServerScoreboardManager {
      */
     public void hideScoreboard(Player player) {
         activePlayers.remove(player.getUniqueId());
-        // 发送空消息清除显示
-        player.sendActionBar(Component.empty());
+        // 发送空消息清除显示，捕获断连异常避免日志污染
+        try {
+            player.sendActionBar(Component.empty());
+        } catch (Exception e) {
+            // 玩家已断开连接，忽略
+        }
     }
 
     /**
@@ -96,7 +100,12 @@ public class ServerScoreboardManager {
                 activePlayers.remove(uuid);
                 continue;
             }
-            sendDisplay(player);
+            try {
+                sendDisplay(player);
+            } catch (Exception e) {
+                // 玩家可能已断开，从活跃列表移除
+                activePlayers.remove(uuid);
+            }
         }
     }
 
@@ -124,7 +133,11 @@ public class ServerScoreboardManager {
         }
 
         Component message = LegacyComponentSerializer.legacySection().deserialize(sb.toString());
-        player.sendActionBar(message);
+        try {
+            player.sendActionBar(message);
+        } catch (Exception e) {
+            // 玩家已断开连接，忽略
+        }
 
         // 同时发送聊天栏的详细服务器列表（每30秒一次，避免刷屏）
         // 这里简化处理，只发送 Action Bar

@@ -203,6 +203,12 @@ public class PlayerRestrictionListener implements Listener {
             return;
         }
 
+        Player player = (Player) entity;
+        // 只有受限制的玩家才享受出生点保护（WORLD 模式下主世界玩家不受限制）
+        if (!isRestricted(player)) {
+            return;
+        }
+
         if (!isInProtectionArea(entity.getLocation())) {
             return;
         }
@@ -221,8 +227,13 @@ public class PlayerRestrictionListener implements Listener {
         Entity victim = event.getEntity();
 
         // 登录点保护：禁止保护区域内的 PVP（玩家攻击玩家）
+        // 只有受限制的玩家才适用出生点保护
         if (damager instanceof Player && victim instanceof Player) {
-            if (isInProtectionArea(damager.getLocation()) || isInProtectionArea(victim.getLocation())) {
+            Player attacker = (Player) damager;
+            Player target = (Player) victim;
+            // 只有攻击者或受害者至少有一方受限制时，才在保护区域内禁止 PVP
+            if ((isRestricted(attacker) || isRestricted(target))
+                    && (isInProtectionArea(damager.getLocation()) || isInProtectionArea(victim.getLocation()))) {
                 event.setCancelled(true);
             }
             return;
@@ -241,6 +252,15 @@ public class PlayerRestrictionListener implements Listener {
     public void onEntityExplode(EntityExplodeEvent event) {
         if (!plugin.getConfig().getBoolean("queue.spawn-protection", true)) {
             return;
+        }
+
+        // WORLD 模式下，只有登录世界才需要出生点保护
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            if (loginWorldManager.getLoginWorld() == null
+                    || !loginWorldManager.getLoginWorld().equals(event.getLocation().getWorld())) {
+                return;
+            }
         }
 
         // 登录点保护：禁止保护区域内的爆炸破坏方块

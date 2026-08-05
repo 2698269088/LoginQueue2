@@ -15,6 +15,31 @@ enable-bungee-extension: false
 # 是否启用调试日志（输出详细的插件运行信息）
 debug: false
 
+# 数据库配置
+# 支持 sqlite 和 mysql 两种数据库类型
+database:
+  # 数据库类型: sqlite 或 mysql
+  type: sqlite
+
+# MySQL 配置（仅当 database.type 为 mysql 时生效）
+mysql:
+  # MySQL 服务器地址
+  host: localhost
+  # MySQL 端口
+  port: 3306
+  # 数据库名称
+  database: loginqueue2
+  # 用户名
+  username: root
+  # 密码
+  password: ""
+  # 表前缀
+  table-prefix: lq2_
+  # 是否使用 SSL 连接
+  use-ssl: false
+  # 是否自动重连
+  auto-reconnect: true
+
 # 认证系统配置
 # 此功能是为了解决Limbo服务器无可用的认证/登录插件
 # Bukkit环境建议关闭，使用更专业的AuthMe等认证插件
@@ -22,6 +47,14 @@ debug: false
 auth:
   # 是否启用登录/注册认证功能
   enabled: false
+  # 认证系统优先级（当同时启用内置auth和AuthMe兼容模式时生效）
+  # 可选值: AUTHME（优先使用AuthMe）, BUILTIN（优先使用内置认证）
+  # 默认优先使用AuthMe，如果AuthMe不可用则回退到内置认证
+  priority: AUTHME
+  # 是否启用 AuthMe 兼容模式
+  # 开启后，插件会与 AuthMe 插件交互，玩家必须通过 AuthMe 登录后才能加入队列
+  # 需要服务器安装 AuthMe（AuthmeReloaded） 插件
+  authme-compat-mode: false
   # 密码最小长度
   min-password-length: 4
   # 密码最大长度
@@ -207,6 +240,10 @@ world-mode:
   # 未放行玩家允许执行的额外命令列表（不需要加斜杠，插件会自动处理）
   # 默认已允许: /join, /logseq, /ls
   allowed-commands: []
+  # 主世界未授权玩家监控间隔（秒）
+  # 插件会定期检查主世界中是否有未排队/未放行的玩家，并将其传送回登录世界
+  # 设置为 0 可禁用监控
+  monitor-interval: 5
 
 # 服务器状态计分板配置
 scoreboard:

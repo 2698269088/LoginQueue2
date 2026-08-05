@@ -51,9 +51,15 @@ messages:
   help-pause: "&e/logseq pause&f - 手动暂停队列放行"
   help-resume: "&e/logseq resume&f - 恢复队列放行"
   help-info: "&e/logseq info&f - 查看主服务器详细信息"
+  help-migrate: "&e/logseq migrate <from> [to]&f - 迁移认证数据 (file/sqlite/mysql)"
   help-help: "&e/logseq help&f - 显示此帮助"
   help-footer: "&a========================================"
   unknown-subcommand: "&c未知子命令，使用 /logseq help 查看帮助"
+  # 数据迁移
+  migrate-usage: "&e用法: /logseq migrate <来源> [目标] - 来源/目标: file, sqlite, mysql"
+  migrate-success: "&a迁移成功: {message}"
+  migrate-fail: "&c迁移失败: {error}"
+  migrate-invalid: "&c无效的迁移方向: {from} -> {to}"
   # 认证相关
   auth-player-only: "&c该命令只能由玩家执行"
   auth-not-enabled: "&c认证功能未启用"
@@ -134,6 +140,20 @@ log-messages:
   auth-data-loaded: "[Auth] 已加载 {count} 条玩家数据"
   auth-data-load-failed: "[Auth] 加载数据失败: {error}"
   auth-data-save-failed: "[Auth] 保存数据失败: {error}"
+  # 数据库
+  auth-db-type: "[Auth] 使用数据库: {type}"
+  auth-db-fallback: "[Auth] 数据库 {type} 初始化失败，回退到文件存储"
+  auth-migrate-from-file: "[Auth] 已从文件迁移 {count} 条数据到数据库"
+  auth-migrate-failed: "[Auth] 从文件迁移数据失败: {error}"
+  sqlite-db-initialized: "[DB] SQLite 数据库已初始化"
+  sqlite-db-init-failed: "[DB] SQLite 数据库初始化失败: {error}"
+  sqlite-create-tables-failed: "[DB] SQLite 创建表失败: {error}"
+  mysql-db-initialized: "[DB] MySQL 数据库已初始化 [{host}:{port}/{database}]"
+  mysql-driver-not-found: "[DB] MySQL 驱动未找到: {error}"
+  mysql-connection-failed: "[DB] MySQL 连接失败 [{host}:{port}]: {error}"
+  mysql-tables-created: "[DB] MySQL 表创建成功"
+  mysql-create-tables-failed: "[DB] MySQL 创建表失败: {error}"
+  auth-close-db-failed: "[Auth] 关闭数据库失败: {error}"
 
   # 配置信息
   config-main-server: "主服务器: {server}"

@@ -22,6 +22,30 @@ auth:
   # 登录成功后是否自动加入排队队列
   auto-queue-after-login: false
 
+# 数据库配置
+database:
+  # 数据存储类型: file (文件存储), sqlite (SQLite数据库), mysql (MySQL数据库)
+  type: file
+
+# MySQL 数据库配置（当 database.type 为 mysql 时生效）
+mysql:
+  # 数据库主机地址
+  host: localhost
+  # 数据库端口
+  port: 3306
+  # 数据库名称
+  database: loginqueue2
+  # 数据库用户名
+  username: root
+  # 数据库密码
+  password: ""
+  # 表前缀
+  table-prefix: lq2_
+  # 是否使用 SSL 连接
+  use-ssl: false
+  # 是否自动重连
+  auto-reconnect: true
+
 # UDP 服务器信息同步配置
 udp-sync:
   # 是否启用 UDP 服务器信息同步

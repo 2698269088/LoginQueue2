@@ -56,6 +56,11 @@ public class QueueItemListener implements Listener {
             return;
         }
 
+        LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
+        if (loginWorldManager != null && loginWorldManager.isWorldMode()) {
+            return;
+        }
+
         Player player = event.getPlayer();
         giveQueueItem(player);
     }
@@ -273,18 +278,21 @@ public class QueueItemListener implements Listener {
     }
 
     /**
-     * 清除玩家物品栏中所有队列物品（扫描全部槽位），并恢复原有物品
+     * 清除玩家物品栏中所有队列物品（扫描全部槽位）。
+     * 注意：不恢复任何原有物品，因为 WORLD 模式下背包恢复由 WorldInventoryListener 统一管理。
      */
     public void removeAllQueueItems(Player player) {
+        int removedCount = 0;
         for (int i = 0; i < player.getInventory().getSize(); i++) {
-            if (isQueueItem(player.getInventory().getItem(i))) {
+            ItemStack item = player.getInventory().getItem(i);
+            if (isQueueItem(item)) {
                 player.getInventory().setItem(i, null);
+                removedCount++;
+                plugin.getLogger().info("[QueueItem] removeAllQueueItems: removed queue item at slot " + i + " for player " + player.getName());
             }
         }
-        // 恢复原有物品
-        ItemStack saved = savedItems.remove(player.getUniqueId());
-        if (saved != null) {
-            player.getInventory().setItem(slot, saved);
-        }
+        // 清理 savedItems 中的记录，防止状态泄漏
+        savedItems.remove(player.getUniqueId());
+        plugin.getLogger().info("[QueueItem] removeAllQueueItems: removed " + removedCount + " queue items for player " + player.getName());
     }
 }

@@ -8,6 +8,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import top.mcocet.loginqueue2.LoginQueue2;
+import top.mcocet.loginqueue2.auth.AuthDataMigrator;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2.listener.PlayerJoinListener;
 import top.mcocet.loginqueue2.util.LanguageManager;
@@ -59,6 +60,8 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
                 return handleResume(sender);
             case "info":
                 return handleInfo(sender);
+            case "migrate":
+                return handleMigrate(sender, args);
             case "help":
                 sendHelp(sender);
                 return true;
@@ -378,6 +381,52 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean handleMigrate(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("loginqueue2.admin.migrate")) {
+            sender.sendMessage(languageManager.getMessage("no-permission"));
+            return true;
+        }
+
+        if (args.length < 3) {
+            sender.sendMessage(ChatColor.YELLOW + "用法: /logseq migrate <from> <to>");
+            sender.sendMessage(ChatColor.YELLOW + "  支持: authme, mysql, sqlite, builtin");
+            sender.sendMessage(ChatColor.YELLOW + "  示例: /logseq migrate authme mysql");
+            sender.sendMessage(ChatColor.YELLOW + "  示例: /logseq migrate sqlite authme");
+            sender.sendMessage(ChatColor.YELLOW + "  示例: /logseq migrate mysql builtin");
+            return true;
+        }
+
+        String from = args[1].toLowerCase();
+        String to = args[2].toLowerCase();
+
+        List<String> validTypes = Arrays.asList("authme", "mysql", "sqlite", "builtin");
+        if (!validTypes.contains(from)) {
+            sender.sendMessage(ChatColor.RED + "无效的源: " + from);
+            sender.sendMessage(ChatColor.YELLOW + "支持: authme, mysql, sqlite, builtin");
+            return true;
+        }
+        if (!validTypes.contains(to)) {
+            sender.sendMessage(ChatColor.RED + "无效的目标: " + to);
+            sender.sendMessage(ChatColor.YELLOW + "支持: authme, mysql, sqlite, builtin");
+            return true;
+        }
+        if (from.equals(to)) {
+            sender.sendMessage(ChatColor.RED + "源和目标不能相同");
+            return true;
+        }
+
+        AuthDataMigrator migrator = new AuthDataMigrator(plugin, plugin.getAuthManager(), plugin.getAuthMeCompatManager());
+        migrator.migrateAsync(sender, from, to, result -> {
+            // 回调在主线程执行
+            if (!result.isSuccess()) {
+                sender.sendMessage(ChatColor.RED + "迁移失败: " + result.error);
+            }
+        });
+
+        sender.sendMessage(ChatColor.GREEN + "[迁移] 迁移任务已在后台启动，请查看控制台输出进度...");
+        return true;
+    }
+
     private void sendHelp(CommandSender sender) {
         sender.sendMessage(languageManager.getMessage("help-header"));
         sender.sendMessage(languageManager.getMessage("help-skip"));
@@ -390,6 +439,7 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
         sender.sendMessage(languageManager.getMessage("help-pause"));
         sender.sendMessage(languageManager.getMessage("help-resume"));
         sender.sendMessage(languageManager.getMessage("help-info"));
+        sender.sendMessage(ChatColor.YELLOW + "/logseq migrate <from> <to>" + ChatColor.WHITE + " - 迁移玩家数据 (authme/mysql/sqlite/builtin)");
         sender.sendMessage(languageManager.getMessage("help-help"));
         sender.sendMessage(languageManager.getMessage("help-footer"));
     }
@@ -397,11 +447,32 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "refresh", "reload", "pause", "resume", "info", "help");
+            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "refresh", "reload", "pause", "resume", "info", "migrate", "help");
             List<String> result = new ArrayList<>();
             for (String sub : subs) {
                 if (sub.startsWith(args[0].toLowerCase())) {
                     result.add(sub);
+                }
+            }
+            return result;
+        }
+        if (args.length == 2 && "migrate".equalsIgnoreCase(args[0]) && sender.hasPermission("loginqueue2.admin.migrate")) {
+            List<String> options = Arrays.asList("authme", "builtin", "sqlite", "mysql");
+            List<String> result = new ArrayList<>();
+            for (String opt : options) {
+                if (opt.startsWith(args[1].toLowerCase())) {
+                    result.add(opt);
+                }
+            }
+            return result;
+        }
+        if (args.length == 3 && "migrate".equalsIgnoreCase(args[0]) && sender.hasPermission("loginqueue2.admin.migrate")) {
+            String from = args[1].toLowerCase();
+            List<String> options = Arrays.asList("authme", "builtin", "sqlite", "mysql");
+            List<String> result = new ArrayList<>();
+            for (String opt : options) {
+                if (opt.startsWith(args[2].toLowerCase()) && !opt.equalsIgnoreCase(args[1])) {
+                    result.add(opt);
                 }
             }
             return result;

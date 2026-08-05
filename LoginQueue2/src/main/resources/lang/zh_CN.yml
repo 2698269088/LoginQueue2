@@ -6,7 +6,7 @@ messages:
   threshold-reached: "&c[登录队列] &f主服务器负载较高，排队暂停，请耐心等待..."
   queue-paused-manual: "&c[登录队列] &f管理员已暂停队列放行，请耐心等待..."
   queue-resumed: "&a[登录队列] &f队列已恢复，正在处理等待中的玩家..."
-  manual-queue-hint: "&a[登录队列] &f请左击物品栏中的“加入游戏”按钮"
+  manual-queue-hint: "&a[登录队列] &f请左击物品栏中的「加入游戏」按钮"
   queue-item-name: "&a加入游戏"
   already-in-queue: "&e你已经在排队队列中了"
   joined-queue: "&a你已加入排队队列"
@@ -89,6 +89,7 @@ messages:
   auth-chat-restricted: "&c请先登录后才能聊天"
   auth-command-restricted: "&c请先登录后才能使用命令"
   world-mode-command-restricted: "&c请先加入游戏后才能使用此命令"
+  authme-please-login-first: "&c请先通过 AuthMe 登录后再加入队列"
   auth-title-register-success: "&a注册成功"
   auth-title-auto-logged-in: "&e已自动登录"
   auth-title-login-success: "&a登录成功"
@@ -116,6 +117,11 @@ messages:
   debug-mode-off: "&a[LoginQueue] 调试模式已关闭"
   total-online: "&e总在线: {online}/{max} ({ratio}%)"
   balance-strategy: "&e负载均衡策略: {strategy}"
+  help-migrate: "&e/logseq migrate <from> [to]&f - 迁移玩家数据 (sqlite|mysql|authme|builtin)"
+  migrate-usage: "&e用法: /logseq migrate <from> [to]\n  数据库迁移: sqlite | mysql\n  AuthMe迁移: authme | builtin"
+  migrate-success: "&a迁移完成！成功迁移 {migrated} 条数据，跳过 {skipped} 条"
+  migrate-fail: "&c迁移失败: {message}"
+  migrate-invalid: "&c无效的迁移方向: {from} -> {to}\n&e可用: sqlite|mysql|authme|builtin"
 
 log-messages:
   # 通用状态
@@ -135,6 +141,13 @@ log-messages:
   bungee-extension-status: "BungeeCord 通道扩展状态: {status}"
   auth-enabled: "认证系统已启用"
   auth-disabled: "认证系统已禁用"
+  authme-compat-enabled: "AuthMe 兼容模式已启用"
+  authme-not-found: "AuthMe 兼容模式已开启，但未检测到 AuthMe 插件，AuthMe 兼容模式将不会生效"
+  authme-api-null: "AuthMe API 实例为空，请检查 AuthMe 插件是否正确加载"
+  auth-priority-authme: "认证优先级: AuthMe 优先"
+  auth-priority-builtin: "认证优先级: 内置认证优先"
+  auth-fallback-builtin: "AuthMe 不可用，回退到内置认证系统"
+  auth-fallback-authme: "内置认证不可用，回退到 AuthMe 兼容模式"
   plugin-enabled: "LoginQueue2 插件已启用"
   plugin-disabled: "LoginQueue2 插件已禁用"
   # 配置信息
@@ -147,11 +160,12 @@ log-messages:
   config-spawn-protection: "出生点保护: {enabled} (半径: {radius})"
   config-spawn-world: "出生点世界: {world} (x={x}, y={y}, z={z})"
   config-bungee-extension: "BungeeCord 扩展: {enabled}"
+  main-world-monitor-started: "主世界未授权玩家监控已启动，检查间隔: {interval}秒"
   cached-server-status: "缓存的服务器状态:"
   # 认证
   auth-register-success: "玩家 {player} 注册成功"
   auth-login-success: "玩家 {player} 登录成功"
-  auth-db-initialized: "认证数据库已初始化"
+  auth-db-initialized: "认证数据库已初始化 ({type})"
   auth-db-init-failed: "认证数据库初始化失败"
   auth-query-failed: "查询玩家数据失败"
   auth-register-failed: "注册玩家失败"
@@ -159,6 +173,15 @@ log-messages:
   auth-update-login-failed: "更新登录信息失败"
   auth-change-password-failed: "修改密码失败"
   auth-close-db-failed: "关闭认证数据库失败"
+  # 数据库
+  sqlite-db-initialized: "SQLite 数据库已初始化"
+  sqlite-db-init-failed: "SQLite 数据库初始化失败"
+  mysql-db-initialized: "MySQL 数据库已初始化 [{host}:{port}/{database}]"
+  mysql-db-init-failed: "MySQL 数据库初始化失败"
+  mysql-driver-not-found: "MySQL 驱动未找到，请检查依赖是否正确引入"
+  mysql-connection-failed: "MySQL 连接失败 [{host}:{port}]"
+  mysql-tables-created: "MySQL 数据表已创建"
+  mysql-create-tables-failed: "MySQL 数据表创建失败"
   # 队列
   queue-processing: "处理队列: 有在线服务器={anyOnline} 总在线={totalOnline} 总容量={totalMax} 队列大小={queueSize}"
   queue-paused-manual-log: "队列已被手动暂停，暂不处理"
@@ -177,7 +200,6 @@ log-messages:
   priority-desc-group: "权限组: {group} (权重: {weight})"
   priority-desc-playtime: "游戏时间 >= {minutes}分钟 (权重: {weight})"
   # 游戏模式
-  invalid-gamemode: "配置的游戏模式 {mode} 无效，使用默认 ADVENTURE 模式。"
   # UDP 客户端
   udp-client-already-initialized: "UDP 客户端 [{server}] 已经初始化"
   udp-client-initialized: "UDP 客户端 [{server}] 已初始化，目标={host}:{port}"

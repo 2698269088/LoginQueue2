@@ -49,6 +49,8 @@ public class AuthRestrictionListener implements Listener {
         allowedCommands.add("/changepw");
         allowedCommands.add("/logseq");
         allowedCommands.add("/ls");
+        allowedCommands.add("/lq");
+        allowedCommands.add("/logque");
         allowedCommands.add("/server");
         allowedCommands.add("/join");
         // 从配置文件加载额外命令

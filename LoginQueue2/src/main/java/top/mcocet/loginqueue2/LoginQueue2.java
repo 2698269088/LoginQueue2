@@ -5,6 +5,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import top.mcocet.loginqueue2.auth.AuthCommand;
 import top.mcocet.loginqueue2.auth.AuthManager;
+import top.mcocet.loginqueue2.auth.AuthMeCompatManager;
 import top.mcocet.loginqueue2.auth.AuthRestrictionListener;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2.command.JoinCommand;
@@ -16,6 +17,7 @@ import top.mcocet.loginqueue2.listener.PlayerJoinListener;
 import top.mcocet.loginqueue2.listener.PlayerMoveListener;
 import top.mcocet.loginqueue2.listener.PlayerRestrictionListener;
 import top.mcocet.loginqueue2.listener.QueueItemListener;
+import top.mcocet.loginqueue2.listener.WorldInventoryListener;
 import top.mcocet.loginqueue2.scoreboard.ServerScoreboardManager;
 import top.mcocet.loginqueue2.util.SchedulerUtil;
 import top.mcocet.loginqueue2.world.LoginWorldManager;
@@ -27,10 +29,12 @@ public final class LoginQueue2 extends JavaPlugin {
     private LanguageManager languageManager;
     private AuthManager authManager;
     private AuthRestrictionListener authRestrictionListener;
+    private AuthMeCompatManager authMeCompatManager;
     private PlayerRestrictionListener playerRestrictionListener;
     private ServerScoreboardManager scoreboardManager;
     private LoginWorldManager loginWorldManager;
     private QueueItemListener queueItemListener;
+    private WorldInventoryListener worldInventoryListener;
     private boolean debug;
 
     @Override
@@ -58,12 +62,15 @@ public final class LoginQueue2 extends JavaPlugin {
         this.authRestrictionListener = new AuthRestrictionListener(this, authManager);
         getServer().getPluginManager().registerEvents(authRestrictionListener, this);
 
+        // 初始化 AuthMe 兼容模式（在内置 auth 未启用时）
+        this.authMeCompatManager = new AuthMeCompatManager(this);
+
         // 初始化登录世界管理器（WORLD 模式）
         this.loginWorldManager = new LoginWorldManager(this);
         getServer().getPluginManager().registerEvents(loginWorldManager, this);
         loginWorldManager.init();
 
-        this.playerJoinListener = new PlayerJoinListener(this, messenger, authManager, authRestrictionListener);
+        this.playerJoinListener = new PlayerJoinListener(this, messenger, authManager, authRestrictionListener, authMeCompatManager);
         getServer().getPluginManager().registerEvents(playerJoinListener, this);
 
         // WORLD 模式下禁用计分板（不需要显示 BungeeCord 服务器状态）
@@ -76,6 +83,14 @@ public final class LoginQueue2 extends JavaPlugin {
 
         this.queueItemListener = new QueueItemListener(this, playerJoinListener);
         getServer().getPluginManager().registerEvents(queueItemListener, this);
+
+        // WORLD 模式下注册背包管理监听器
+        if (worldMode) {
+            this.worldInventoryListener = new WorldInventoryListener(this);
+            getServer().getPluginManager().registerEvents(worldInventoryListener, this);
+            // 启动主世界未授权玩家监控任务（每 5 秒检查一次）
+            startMainWorldMonitorTask();
+        }
 
         boolean restrictMovement = getConfig().getBoolean("queue.restrict-movement", true);
         getServer().getPluginManager().registerEvents(new PlayerMoveListener(this, playerJoinListener, playerJoinListener.getAllowedPlayers(), restrictMovement), this);
@@ -128,7 +143,34 @@ public final class LoginQueue2 extends JavaPlugin {
 
         logStartupConfig();
 
-        if (authManager.isEnabled()) {
+        // 根据优先级和可用性决定使用哪种认证系统
+        String authPriority = getConfig().getString("auth.priority", "AUTHME").toUpperCase();
+        boolean useAuthMe = false;
+        boolean useBuiltin = false;
+
+        if ("AUTHME".equals(authPriority)) {
+            // AuthMe 优先
+            getLogger().info(languageManager.getLogMessage("auth-priority-authme"));
+            if (authMeCompatManager.isEnabled()) {
+                useAuthMe = true;
+            } else if (authManager.isEnabled()) {
+                useBuiltin = true;
+                getLogger().info(languageManager.getLogMessage("auth-fallback-builtin"));
+            }
+        } else {
+            // 内置认证优先
+            getLogger().info(languageManager.getLogMessage("auth-priority-builtin"));
+            if (authManager.isEnabled()) {
+                useBuiltin = true;
+            } else if (authMeCompatManager.isEnabled()) {
+                useAuthMe = true;
+                getLogger().info(languageManager.getLogMessage("auth-fallback-authme"));
+            }
+        }
+
+        if (useAuthMe) {
+            getLogger().info(languageManager.getLogMessage("authme-compat-enabled"));
+        } else if (useBuiltin) {
             getLogger().info(languageManager.getLogMessage("auth-enabled"));
         } else {
             getLogger().info(languageManager.getLogMessage("auth-disabled"));
@@ -141,6 +183,22 @@ public final class LoginQueue2 extends JavaPlugin {
         long offlineInterval = getConfig().getLong("queue.offline-refresh-interval", 10) * 20L;
 
         scheduleNextRefresh(onlineInterval, offlineInterval, 20L);
+    }
+
+    /**
+     * WORLD 模式下启动主世界未授权玩家监控任务
+     */
+    private void startMainWorldMonitorTask() {
+        long monitorInterval = getConfig().getLong("world-mode.monitor-interval", 5) * 20L;
+        if (monitorInterval <= 0) {
+            monitorInterval = 100L; // 默认 5 秒
+        }
+        SchedulerUtil.runTaskTimer(this, () -> {
+            if (worldInventoryListener != null) {
+                worldInventoryListener.checkUnauthorizedPlayersInMainWorld();
+            }
+        }, monitorInterval, monitorInterval);
+        getLogger().info(languageManager.getLogMessage("main-world-monitor-started", "interval", String.valueOf(monitorInterval / 20L)));
     }
 
     private void sayLog() {
@@ -219,6 +277,10 @@ public final class LoginQueue2 extends JavaPlugin {
         getLogger().info(languageManager.getLogMessage("plugin-disabled"));
     }
 
+    public PlayerJoinListener getPlayerJoinListener() {
+        return playerJoinListener;
+    }
+
     public BungeeMessenger getMessenger() {
         return messenger;
     }
@@ -235,6 +297,35 @@ public final class LoginQueue2 extends JavaPlugin {
         return authRestrictionListener;
     }
 
+    public AuthMeCompatManager getAuthMeCompatManager() {
+        return authMeCompatManager;
+    }
+
+    /**
+     * 判断当前实际使用的认证系统
+     * @return "AUTHME" 使用AuthMe, "BUILTIN" 使用内置认证, null 未启用认证
+     */
+    public String getActiveAuthSystem() {
+        String authPriority = getConfig().getString("auth.priority", "AUTHME").toUpperCase();
+
+        if ("AUTHME".equals(authPriority)) {
+            // AuthMe 优先
+            if (authMeCompatManager.isEnabled()) {
+                return "AUTHME";
+            } else if (authManager.isEnabled()) {
+                return "BUILTIN";
+            }
+        } else {
+            // 内置认证优先
+            if (authManager.isEnabled()) {
+                return "BUILTIN";
+            } else if (authMeCompatManager.isEnabled()) {
+                return "AUTHME";
+            }
+        }
+        return null;
+    }
+
     public PlayerRestrictionListener getPlayerRestrictionListener() {
         return playerRestrictionListener;
     }
@@ -249,6 +340,10 @@ public final class LoginQueue2 extends JavaPlugin {
 
     public QueueItemListener getQueueItemListener() {
         return queueItemListener;
+    }
+
+    public WorldInventoryListener getWorldInventoryListener() {
+        return worldInventoryListener;
     }
 
     public boolean isDebug() {

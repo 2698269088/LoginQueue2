@@ -7,6 +7,7 @@ import com.loohp.limbo.commands.TabCompletor;
 import com.loohp.limbo.player.Player;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import top.mcocet.loginqueue2limbo.LoginQueue2Limbo;
+import top.mcocet.loginqueue2limbo.auth.AuthDataMigrator;
 import top.mcocet.loginqueue2limbo.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2limbo.listener.PlayerJoinListener;
 import top.mcocet.loginqueue2limbo.util.LanguageManager;
@@ -76,6 +77,9 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
                 break;
             case "info":
                 handleInfo(sender);
+                break;
+            case "migrate":
+                handleMigrate(sender, subArgs);
                 break;
             case "help":
                 sendHelp(sender);
@@ -325,6 +329,52 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
         sender.sendMessage(languageManager.getMessage("info-footer"));
     }
 
+    private void handleMigrate(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("loginqueue2.admin.migrate")) {
+            sender.sendMessage(languageManager.getMessage("no-permission"));
+            return;
+        }
+
+        if (args.length < 3) {
+            sender.sendMessage("&e用法: /logseq migrate <from> <to>");
+            sender.sendMessage("&e  支持: file, mysql, sqlite");
+            sender.sendMessage("&e  示例: /logseq migrate file mysql");
+            sender.sendMessage("&e  示例: /logseq migrate mysql file");
+            sender.sendMessage("&e  示例: /logseq migrate sqlite mysql");
+            return;
+        }
+
+        String from = args[1].toLowerCase();
+        String to = args[2].toLowerCase();
+
+        java.util.List<String> validTypes = Arrays.asList("file", "mysql", "sqlite");
+        if (!validTypes.contains(from)) {
+            sender.sendMessage("&c无效的源: " + from);
+            sender.sendMessage("&e支持: file, mysql, sqlite");
+            return;
+        }
+        if (!validTypes.contains(to)) {
+            sender.sendMessage("&c无效的目标: " + to);
+            sender.sendMessage("&e支持: file, mysql, sqlite");
+            return;
+        }
+        if (from.equals(to)) {
+            sender.sendMessage("&c源和目标不能相同");
+            return;
+        }
+
+        AuthDataMigrator migrator = new AuthDataMigrator(plugin);
+        migrator.migrateAsync(sender, from, to, result -> {
+            if (result.success) {
+                sender.sendMessage(languageManager.getMessage("migrate-success", "message", result.message));
+            } else {
+                sender.sendMessage(languageManager.getMessage("migrate-fail", "error", result.message));
+            }
+        });
+
+        sender.sendMessage("&a[迁移] 迁移任务已在后台启动，请查看控制台输出进度...");
+    }
+
     private void sendHelp(CommandSender sender) {
         sender.sendMessage(languageManager.getMessage("help-header"));
         sender.sendMessage(languageManager.getMessage("help-skip"));
@@ -337,6 +387,7 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
         sender.sendMessage(languageManager.getMessage("help-pause"));
         sender.sendMessage(languageManager.getMessage("help-resume"));
         sender.sendMessage(languageManager.getMessage("help-info"));
+        sender.sendMessage(languageManager.getMessage("help-migrate"));
         sender.sendMessage(languageManager.getMessage("help-help"));
         sender.sendMessage(languageManager.getMessage("help-footer"));
     }
@@ -355,7 +406,7 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
         String[] subArgs = args.length > 1 ? Arrays.copyOfRange(args, 1, args.length) : new String[0];
 
         if (subArgs.length == 0) {
-            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "refresh", "reload", "info", "help");
+            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "refresh", "reload", "info", "migrate", "help");
             List<String> result = new ArrayList<>();
             for (String sub : subs) {
                 result.add(sub);
@@ -363,7 +414,7 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
             return result;
         }
         if (subArgs.length == 1) {
-            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "refresh", "reload", "pause", "resume", "info", "help");
+            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "refresh", "reload", "pause", "resume", "info", "migrate", "help");
             List<String> result = new ArrayList<>();
             for (String sub : subs) {
                 if (sub.startsWith(subArgs[0].toLowerCase())) {
@@ -372,17 +423,32 @@ public class LoginQueue2LimboCommand implements CommandExecutor, TabCompletor {
             }
             return result;
         }
-        if (subArgs.length == 2 && ("skip".equalsIgnoreCase(subArgs[0]) || "promote".equalsIgnoreCase(subArgs[0]))) {
-            String perm = "skip".equalsIgnoreCase(subArgs[0]) ? "loginqueue2.admin.skip" : "loginqueue2.admin.promote";
-            if (sender.hasPermission(perm)) {
-                List<String> names = new ArrayList<>();
-                for (Player player : Limbo.getInstance().getPlayers()) {
-                    if (player.getName().toLowerCase().startsWith(subArgs[1].toLowerCase())) {
-                        names.add(player.getName());
+        if (subArgs.length == 2) {
+            if ("skip".equalsIgnoreCase(subArgs[0]) || "promote".equalsIgnoreCase(subArgs[0])) {
+                String perm = "skip".equalsIgnoreCase(subArgs[0]) ? "loginqueue2.admin.skip" : "loginqueue2.admin.promote";
+                if (sender.hasPermission(perm)) {
+                    List<String> names = new ArrayList<>();
+                    for (Player player : Limbo.getInstance().getPlayers()) {
+                        if (player.getName().toLowerCase().startsWith(subArgs[1].toLowerCase())) {
+                            names.add(player.getName());
+                        }
                     }
+                    return names;
                 }
-                return names;
             }
+            if ("migrate".equalsIgnoreCase(subArgs[0])) {
+                return Arrays.asList("file", "sqlite", "mysql");
+            }
+        }
+        if (subArgs.length == 3 && "migrate".equalsIgnoreCase(subArgs[0])) {
+            java.util.List<String> options = Arrays.asList("file", "sqlite", "mysql");
+            java.util.List<String> result = new ArrayList<>();
+            for (String opt : options) {
+                if (opt.startsWith(subArgs[2].toLowerCase()) && !opt.equalsIgnoreCase(subArgs[1])) {
+                    result.add(opt);
+                }
+            }
+            return result;
         }
         return Collections.emptyList();
     }

@@ -361,6 +361,8 @@ public class LoginWorldManager implements Listener {
 
     /**
      * 保存玩家在主世界的退出位置和游戏模式
+     * 注意：WORLD 模式下背包由 WorldInventoryListener 的内存快照管理，
+     * 此处不保存背包到数据库，避免数据库中的 inventory 字段与内存快照冲突。
      */
     public void savePlayerQuitLocation(org.bukkit.entity.Player player) {
         String mainWorldName = plugin.getConfig().getString("queue.spawn.world", "world");
@@ -375,7 +377,7 @@ public class LoginWorldManager implements Listener {
             }
             return;
         }
-        // 保存玩家在当前世界的退出位置和游戏模式
+        // 保存玩家在当前世界的退出位置和游戏模式（不保存背包，背包由 WorldInventoryListener 管理）
         if (mainWorld != null) {
             plugin.getAuthManager().savePlayerLocation(player.getUniqueId(), player.getLocation().clone(), player.getGameMode());
             if (plugin.isDebug()) {
@@ -405,10 +407,17 @@ public class LoginWorldManager implements Listener {
         // 优先使用数据库保存的上次退出位置
         Location quitLocation = plugin.getAuthManager().getPlayerLocation(player.getUniqueId());
         if (quitLocation != null && quitLocation.getWorld() != null) {
-            if (plugin.isDebug()) {
-                plugin.getLogger().info("Restored quit location for player " + player.getName() + ": " + quitLocation.getBlockX() + "," + quitLocation.getBlockY() + "," + quitLocation.getBlockZ());
+            // 忽略登录世界的位置（防止 handleEnterLoginWorld 保存的登录世界位置被误用）
+            if (loginWorld != null && loginWorld.equals(quitLocation.getWorld())) {
+                if (plugin.isDebug()) {
+                    plugin.getLogger().info("Ignoring saved login world location for player " + player.getName() + ", falling back to main world spawn.");
+                }
+            } else {
+                if (plugin.isDebug()) {
+                    plugin.getLogger().info("Restored quit location for player " + player.getName() + ": " + quitLocation.getBlockX() + "," + quitLocation.getBlockY() + "," + quitLocation.getBlockZ());
+                }
+                return quitLocation;
             }
-            return quitLocation;
         }
 
         // 使用玩家 bed spawn location（如果设置了）
@@ -452,10 +461,16 @@ public class LoginWorldManager implements Listener {
 
     /**
      * 将玩家传送到主世界
+     * 注意：背包恢复在传送回调中直接调用 WorldInventoryListener，不依赖 PlayerChangedWorldEvent
+     * （因为 Folia 的 teleportAsync 回调中可能不触发该事件）
      */
     public void teleportToMainWorld(org.bukkit.entity.Player player) {
         Location target = getMainWorldLocation(player);
         if (target != null) {
+            // 传送前：先在登录世界移除队列物品，避免恢复背包时覆盖
+            if (plugin.getWorldInventoryListener() != null) {
+                plugin.getWorldInventoryListener().removeQueueItemsBeforeTeleport(player);
+            }
             SchedulerUtil.teleport(player, target, () -> {
                 // 恢复玩家上次退出时的游戏模式
                 org.bukkit.GameMode savedGameMode = plugin.getAuthManager().getPlayerGameMode(player.getUniqueId());
@@ -465,7 +480,11 @@ public class LoginWorldManager implements Listener {
                         plugin.getLogger().info("Restored gamemode " + savedGameMode + " for player " + player.getName());
                     }
                 }
-                // 删除数据库记录（位置和游戏模式都已恢复）
+                // 直接调用 WorldInventoryListener 恢复背包（不依赖 PlayerChangedWorldEvent）
+                if (plugin.getWorldInventoryListener() != null) {
+                    plugin.getWorldInventoryListener().restoreInventoryFromLoginWorld(player);
+                }
+                // 删除数据库记录（位置和游戏模式已恢复）
                 plugin.getAuthManager().deletePlayerLocation(player.getUniqueId());
                 plugin.getLogger().info("Player " + player.getName() + " teleported to main world: " + target.getWorld().getName() + " at " + target.getBlockX() + "," + target.getBlockY() + "," + target.getBlockZ());
             });
