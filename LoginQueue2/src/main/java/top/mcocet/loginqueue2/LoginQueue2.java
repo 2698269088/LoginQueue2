@@ -10,6 +10,7 @@ import top.mcocet.loginqueue2.auth.AuthRestrictionListener;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2.command.JoinCommand;
 import top.mcocet.loginqueue2.command.LoginQueue2Command;
+import top.mcocet.loginqueue2.gui.ServerSelectorMenu;
 import top.mcocet.loginqueue2.listener.DimensionListener;
 import top.mcocet.loginqueue2.util.LanguageManager;
 import top.mcocet.loginqueue2.listener.PerformanceListener;
@@ -19,6 +20,7 @@ import top.mcocet.loginqueue2.listener.PlayerRestrictionListener;
 import top.mcocet.loginqueue2.listener.QueueItemListener;
 import top.mcocet.loginqueue2.listener.WorldInventoryListener;
 import top.mcocet.loginqueue2.scoreboard.ServerScoreboardManager;
+import top.mcocet.loginqueue2.udp.UDPServer;
 import top.mcocet.loginqueue2.util.SchedulerUtil;
 import top.mcocet.loginqueue2.world.LoginWorldManager;
 
@@ -35,6 +37,8 @@ public final class LoginQueue2 extends JavaPlugin {
     private LoginWorldManager loginWorldManager;
     private QueueItemListener queueItemListener;
     private WorldInventoryListener worldInventoryListener;
+    private ServerSelectorMenu serverSelectorMenu;
+    private UDPServer udpServer;
     private boolean debug;
 
     @Override
@@ -83,6 +87,19 @@ public final class LoginQueue2 extends JavaPlugin {
 
         this.queueItemListener = new QueueItemListener(this, playerJoinListener);
         getServer().getPluginManager().registerEvents(queueItemListener, this);
+
+        // 注册 UDP 多主服务器选择菜单
+        this.serverSelectorMenu = new ServerSelectorMenu(this);
+        getServer().getPluginManager().registerEvents(serverSelectorMenu, this);
+
+        // 启动 UDP 服务端，接收子服务器的 /connect 虚拟排队请求
+        boolean udpEnabled = getConfig().getBoolean("udp-sync.enabled", false);
+        boolean connectQueueEnabled = getConfig().getBoolean("udp-sync.connect-queue.enabled", false);
+        if (udpEnabled && connectQueueEnabled) {
+            int serverPort = getConfig().getInt("udp-sync.connect-queue.server-port", 16648);
+            this.udpServer = new UDPServer(this, messenger, playerJoinListener, serverPort);
+            this.udpServer.start();
+        }
 
         // WORLD 模式下注册背包管理监听器
         if (worldMode) {
@@ -268,6 +285,9 @@ public final class LoginQueue2 extends JavaPlugin {
         if (scoreboardManager != null) {
             scoreboardManager.shutdown();
         }
+        if (udpServer != null) {
+            udpServer.stop();
+        }
         if (messenger != null) {
             messenger.shutdown();
         }
@@ -340,6 +360,14 @@ public final class LoginQueue2 extends JavaPlugin {
 
     public QueueItemListener getQueueItemListener() {
         return queueItemListener;
+    }
+
+    public ServerSelectorMenu getServerSelectorMenu() {
+        return serverSelectorMenu;
+    }
+
+    public UDPServer getUDPServer() {
+        return udpServer;
     }
 
     public WorldInventoryListener getWorldInventoryListener() {

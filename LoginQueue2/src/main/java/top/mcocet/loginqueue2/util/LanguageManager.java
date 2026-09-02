@@ -6,6 +6,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -36,15 +37,46 @@ public class LanguageManager {
             plugin.saveResource("lang/" + language + ".yml", false);
         }
 
+        FileConfiguration defaultConfig = loadDefaultLangConfig(language);
+
         if (langFile.exists()) {
             langConfig = YamlConfiguration.loadConfiguration(langFile);
+            // 自动合并内置资源中新增但外部文件缺失的语言键，避免升级插件后提示 Missing message
+            if (defaultConfig != null) {
+                mergeMissingKeys(langConfig, defaultConfig);
+                try {
+                    langConfig.save(langFile);
+                } catch (IOException e) {
+                    plugin.getLogger().warning("[LoginQueue2] Failed to save merged language file: " + e.getMessage());
+                }
+            }
         } else {
             plugin.getLogger().warning("[LoginQueue2] Language file lang/" + language + ".yml not found, using built-in default language.");
-            InputStream defaultStream = plugin.getResource("lang/zh_CN.yml");
-            if (defaultStream != null) {
-                langConfig = YamlConfiguration.loadConfiguration(new InputStreamReader(defaultStream, StandardCharsets.UTF_8));
-            } else {
-                langConfig = new YamlConfiguration();
+            langConfig = defaultConfig != null ? defaultConfig : new YamlConfiguration();
+        }
+    }
+
+    /**
+     * 加载内置默认语言配置
+     */
+    private FileConfiguration loadDefaultLangConfig(String language) {
+        InputStream stream = plugin.getResource("lang/" + language + ".yml");
+        if (stream == null) {
+            stream = plugin.getResource("lang/zh_CN.yml");
+        }
+        if (stream != null) {
+            return YamlConfiguration.loadConfiguration(new InputStreamReader(stream, StandardCharsets.UTF_8));
+        }
+        return null;
+    }
+
+    /**
+     * 将 source 中存在但 target 中缺失的键合并到 target
+     */
+    private void mergeMissingKeys(FileConfiguration target, FileConfiguration source) {
+        for (String key : source.getKeys(true)) {
+            if (!target.contains(key)) {
+                target.set(key, source.get(key));
             }
         }
     }

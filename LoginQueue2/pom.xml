@@ -4,14 +4,18 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>top.mcocet</groupId>
-    <artifactId>LoginQueue2-parent</artifactId>
-    <version>1.5</version>
+    <parent>
+        <groupId>top.mcocet</groupId>
+        <artifactId>LoginQueue2-parent</artifactId>
+        <version>1.6</version>
+    </parent>
+
+    <artifactId>LoginQueue2</artifactId>
+    <packaging>jar</packaging>
 
     <name>LoginQueue2</name>
-    <description>登录队列插件</description>
+    <description>登录队列主插件</description>
     <url>https://home.mcocet.top</url>
-    <packaging>jar</packaging>
 
     <properties>
         <java.version>1.8</java.version>
@@ -46,6 +50,26 @@
                         <goals>
                             <goal>shade</goal>
                         </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>${maven-antrun-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <mkdir dir="${dist.dir}"/>
+                                <copy file="${project.build.directory}/${project.build.finalName}.jar"
+                                      todir="${dist.dir}"/>
+                            </target>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

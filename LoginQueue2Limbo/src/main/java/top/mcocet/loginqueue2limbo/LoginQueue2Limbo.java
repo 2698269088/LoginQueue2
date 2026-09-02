@@ -13,6 +13,7 @@ import top.mcocet.loginqueue2limbo.auth.AuthRestrictionListener;
 import top.mcocet.loginqueue2limbo.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2limbo.command.JoinCommand;
 import top.mcocet.loginqueue2limbo.command.LoginQueue2LimboCommand;
+import top.mcocet.loginqueue2limbo.gui.ServerSelectorMenu;
 import top.mcocet.loginqueue2limbo.listener.PlayerJoinListener;
 import top.mcocet.loginqueue2limbo.listener.PlayerMoveListener;
 import top.mcocet.loginqueue2limbo.listener.PlayerRestrictionListener;
@@ -20,6 +21,7 @@ import top.mcocet.loginqueue2limbo.listener.PluginMessageListener;
 import top.mcocet.loginqueue2limbo.listener.QueueItemListener;
 import top.mcocet.loginqueue2limbo.util.LanguageManager;
 import top.mcocet.loginqueue2limbo.scoreboard.ServerScoreboardManager;
+import top.mcocet.loginqueue2limbo.udp.UDPServer;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -36,6 +38,8 @@ public class LoginQueue2Limbo extends LimboPlugin {
     private AuthManager authManager;
     private AuthRestrictionListener authRestrictionListener;
     private ServerScoreboardManager scoreboardManager;
+    private ServerSelectorMenu serverSelectorMenu;
+    private UDPServer udpServer;
     private FileConfiguration config;
     private boolean debug;
 
@@ -65,6 +69,18 @@ public class LoginQueue2Limbo extends LimboPlugin {
         Limbo.getInstance().getEventsManager().registerEvents(this, new QueueItemListener(this, playerJoinListener));
 
         Limbo.getInstance().getEventsManager().registerEvents(this, new PluginMessageListener(messenger));
+
+        this.serverSelectorMenu = new ServerSelectorMenu(this);
+        Limbo.getInstance().getEventsManager().registerEvents(this, serverSelectorMenu);
+
+        // 启动 UDP 服务端，接收子服务器的 /connect 虚拟排队请求
+        boolean udpEnabled = getConfigValueBoolean("udp-sync.enabled", false);
+        boolean connectQueueEnabled = getConfigValueBoolean("udp-sync.connect-queue.enabled", false);
+        if (udpEnabled && connectQueueEnabled) {
+            int serverPort = getConfigValueInt("udp-sync.connect-queue.server-port", 16648);
+            this.udpServer = new UDPServer(this, messenger, playerJoinListener, serverPort);
+            this.udpServer.start();
+        }
 
         this.scoreboardManager = new ServerScoreboardManager(this, messenger);
 
@@ -148,10 +164,17 @@ public class LoginQueue2Limbo extends LimboPlugin {
         if (scoreboardManager != null) {
             scoreboardManager.shutdown();
         }
+        if (udpServer != null) {
+            udpServer.stop();
+        }
         if (messenger != null) {
             messenger.shutdown();
         }
         Limbo.getInstance().getConsole().sendMessage(languageManager.getLogMessage("plugin-disabled"));
+    }
+
+    public PlayerJoinListener getPlayerJoinListener() {
+        return playerJoinListener;
     }
 
     public BungeeMessenger getMessenger() {
@@ -168,6 +191,14 @@ public class LoginQueue2Limbo extends LimboPlugin {
 
     public ServerScoreboardManager getScoreboardManager() {
         return scoreboardManager;
+    }
+
+    public ServerSelectorMenu getServerSelectorMenu() {
+        return serverSelectorMenu;
+    }
+
+    public UDPServer getUDPServer() {
+        return udpServer;
     }
 
     public LanguageManager getLanguageManager() {

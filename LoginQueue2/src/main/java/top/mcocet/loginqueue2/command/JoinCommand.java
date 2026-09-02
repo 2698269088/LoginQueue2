@@ -6,6 +6,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import top.mcocet.loginqueue2.LoginQueue2;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
+import top.mcocet.loginqueue2.gui.ServerSelectorMenu;
 import top.mcocet.loginqueue2.listener.PlayerJoinListener;
 import top.mcocet.loginqueue2.util.LanguageManager;
 import top.mcocet.loginqueue2.util.SchedulerUtil;
@@ -42,6 +43,25 @@ public class JoinCommand implements CommandExecutor {
 
         if (listener.isInQueue(player.getUniqueId())) {
             player.sendMessage(languageManager.getMessage("already-in-queue"));
+            return true;
+        }
+
+        // 如果启用了 UDP 服务器选择菜单，打开菜单让玩家选择目标服务器
+        if (ServerSelectorMenu.isEnabled(plugin)) {
+            // AuthMe 兼容模式下，未登录玩家不能打开菜单
+            if ("AUTHME".equals(plugin.getActiveAuthSystem())
+                    && !plugin.getAuthMeCompatManager().isAuthenticated(player)) {
+                player.sendMessage(languageManager.getMessage("authme-please-login-first"));
+                return true;
+            }
+            // 多服务器独立队列模式下，如果玩家已在队列中则提示
+            if (plugin.getPlayerJoinListener() != null
+                    && plugin.getPlayerJoinListener().isPerServerQueueMode()
+                    && listener.isInQueue(player.getUniqueId())) {
+                player.sendMessage(languageManager.getMessage("already-in-queue"));
+                return true;
+            }
+            plugin.getServerSelectorMenu().open(player);
             return true;
         }
 

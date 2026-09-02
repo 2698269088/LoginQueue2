@@ -58,6 +58,25 @@ udp-sync:
   # 此密钥只能手动配置，不会通过网络传输，建议两端配置相同
   # 建议修改为非预设密钥
   planned-key: "loginqueue2"
+  # /connect 跨服虚拟排队配置（允许子服玩家通过 /connect 加入主插件队列）
+  connect-queue:
+    # 是否启用接收子服的 /connect 虚拟排队请求
+    enabled: false
+    # 主插件 UDP 服务端监听端口（子服通过此端口发送请求）
+    server-port: 16648
+    # 队列状态广播间隔（秒），0 表示不广播
+    status-interval: 3
+  # UDP 多主服务器选择菜单（仅在 udp-sync.enabled 为 true 时生效）
+  # 开启后，玩家点击“加入游戏”按钮或使用 /join 命令时，会弹出服务器选择菜单
+  server-selector:
+    # 是否启用服务器选择菜单
+    enabled: false
+    # 菜单标题（支持颜色代码 &）
+    title: "&a选择要加入的服务器"
+    # 在线服务器显示物品（Limbo 使用 minecraft: 命名空间）
+    online-material: "minecraft:lime_stained_glass_pane"
+    # 离线服务器显示物品
+    offline-material: "minecraft:red_stained_glass_pane"
   # 主服务器列表（支持多主服务器负载均衡）
   # 考虑到使用多大厅的用户基本都是大型服务器
   # 大概率也就有多个BC/VC端
@@ -90,6 +109,11 @@ queue:
   main-server: "main"
   # 主服务器最大可连接玩家数（通过配置文件设置，单服务器模式使用）
   max-online: 50
+  # 是否启用每服独立队列（仅在多服务器跳转模式下生效）
+  # 开启后，玩家通过服务器选择菜单选择目标服务器，并进入该服务器的独立队列
+  # 每个服务器独立计算容量、阈值和放行节奏
+  # 仅在 udp-sync.enabled: true 且 udp-sync.server-selector.enabled: true 时生效
+  per-server-queue: false
   # 负载均衡策略: LEAST_PLAYERS 最少玩家, LEAST_LOAD 最低负载, ROUND_ROBIN 轮询, RANDOM 随机
   balance-strategy: LEAST_PLAYERS
   # 是否启用优先队列系统

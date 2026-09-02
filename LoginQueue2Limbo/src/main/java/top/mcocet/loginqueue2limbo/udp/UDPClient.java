@@ -25,7 +25,7 @@ import java.util.concurrent.Executors;
 public class UDPClient {
 
     /** 协议版本号：用于跨插件通信版本兼容性检查 */
-    public static final String PROTOCOL_VERSION = "1.4";
+    public static final String PROTOCOL_VERSION = "1.5";
 
     private static final String TYPE_KEY_REQUEST = "KEY_REQ";
     private static final String TYPE_KEY_EXCHANGE = "KEY_EXCH";
@@ -548,6 +548,38 @@ public class UDPClient {
 
     public String getHost() {
         return host;
+    }
+
+    public int getPort() {
+        return port;
+    }
+
+    public String getSecretKey() {
+        return secretKey;
+    }
+
+    /**
+     * 发送原始数据到该 UDP 客户端配置的服务器地址
+     *
+     * @param data 要发送的数据
+     * @return 是否发送成功
+     */
+    public boolean sendRawData(String data) {
+        if (socket == null || socket.isClosed()) {
+            return false;
+        }
+        try {
+            InetAddress address = InetAddress.getByName(host);
+            byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+            DatagramPacket packet = new DatagramPacket(bytes, bytes.length, address, port);
+            socket.send(packet);
+            return true;
+        } catch (IOException e) {
+            if (isDebug()) {
+                log(languageManager.getLogMessage("udp-send-raw-failed", "server", serverName, "error", e.getMessage()));
+            }
+            return false;
+        }
     }
 
     public ConcurrentHashMap<String, BungeeMessenger.ServerStatus> getStatusCache() {

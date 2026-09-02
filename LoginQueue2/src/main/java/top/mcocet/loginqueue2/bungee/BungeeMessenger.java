@@ -31,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class BungeeMessenger implements PluginMessageListener {
 
     /** 协议版本号：用于跨插件通信版本兼容性检查 */
-    public static final String PROTOCOL_VERSION = "1.4";
+    public static final String PROTOCOL_VERSION = "1.5";
 
     /** 自定义消息通道：用于通知代理端将指定玩家转移到目标服务器 */
     public static final String CHANNEL_CONNECT_OTHER = "loginqueue2:connectother";
@@ -83,18 +83,16 @@ public class BungeeMessenger implements PluginMessageListener {
         plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_BUNGEE_CORD);
         plugin.getServer().getMessenger().registerIncomingPluginChannel(plugin, CHANNEL_BUNGEE_CORD, this);
 
-        if (!enabled) {
-            return;
+        if (enabled) {
+            // 注册自定义消息通道
+            plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_CONNECT_OTHER);
+            plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_CONNECT_REQUEST);
+            plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_SERVER_INFO);
+            plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_LOGIN_SUCCESS);
+            plugin.getServer().getMessenger().registerIncomingPluginChannel(plugin, CHANNEL_SERVER_INFO, this);
         }
 
-        // 注册自定义消息通道
-        plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_CONNECT_OTHER);
-        plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_CONNECT_REQUEST);
-        plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_SERVER_INFO);
-        plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL_LOGIN_SUCCESS);
-        plugin.getServer().getMessenger().registerIncomingPluginChannel(plugin, CHANNEL_SERVER_INFO, this);
-
-        // 初始化 UDP 客户端（支持多主服务器）
+        // 初始化 UDP 客户端（独立于 BC 扩展，支持多主服务器）
         if (udpEnabled) {
             initUDPClients();
         }
@@ -170,16 +168,14 @@ public class BungeeMessenger implements PluginMessageListener {
         plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL_BUNGEE_CORD);
         plugin.getServer().getMessenger().unregisterIncomingPluginChannel(plugin, CHANNEL_BUNGEE_CORD, this);
 
-        if (!enabled) {
-            return;
+        if (enabled) {
+            // 注销自定义消息通道
+            plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL_CONNECT_OTHER);
+            plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL_CONNECT_REQUEST);
+            plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL_SERVER_INFO);
+            plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL_LOGIN_SUCCESS);
+            plugin.getServer().getMessenger().unregisterIncomingPluginChannel(plugin, CHANNEL_SERVER_INFO, this);
         }
-
-        // 注销自定义消息通道
-        plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL_CONNECT_OTHER);
-        plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL_CONNECT_REQUEST);
-        plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL_SERVER_INFO);
-        plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL_LOGIN_SUCCESS);
-        plugin.getServer().getMessenger().unregisterIncomingPluginChannel(plugin, CHANNEL_SERVER_INFO, this);
 
         // 关闭所有 UDP 客户端
         for (UDPClient client : udpClients) {
@@ -427,6 +423,10 @@ public class BungeeMessenger implements PluginMessageListener {
      */
     public void requestMainServerInfo() {
         requestServerInfo(mainServer);
+    }
+
+    public List<UDPClient> getUdpClients() {
+        return new ArrayList<>(udpClients);
     }
 
     /**

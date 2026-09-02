@@ -20,6 +20,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerPickupItemEvent;
 import top.mcocet.loginqueue2.LoginQueue2;
+import top.mcocet.loginqueue2.gui.ServerSelectorMenu;
 import top.mcocet.loginqueue2.world.LoginWorldManager;
 
 import java.util.HashSet;
@@ -292,6 +293,11 @@ public class PlayerRestrictionListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player)) {
+            return;
+        }
+
+        // 放行服务器选择菜单中的点击
+        if (event.getInventory().getHolder() instanceof ServerSelectorMenu.ServerSelectorHolder) {
             return;
         }
 

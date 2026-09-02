@@ -7,6 +7,7 @@ import com.loohp.limbo.player.Player;
 import com.loohp.limbo.scheduler.LimboTask;
 import top.mcocet.loginqueue2limbo.LoginQueue2Limbo;
 import top.mcocet.loginqueue2limbo.bungee.BungeeMessenger;
+import top.mcocet.loginqueue2limbo.gui.ServerSelectorMenu;
 import top.mcocet.loginqueue2limbo.listener.PlayerJoinListener;
 import top.mcocet.loginqueue2limbo.util.LanguageManager;
 
@@ -50,6 +51,19 @@ public class JoinCommand implements CommandExecutor {
 
         if (listener.isInQueue(player.getUniqueId())) {
             player.sendMessage(languageManager.getMessage("already-in-queue"));
+            return;
+        }
+
+        // 如果启用了 UDP 服务器选择菜单，打开菜单让玩家选择目标服务器
+        if (ServerSelectorMenu.isEnabled(plugin)) {
+            // 多服务器独立队列模式下，如果玩家已在队列中则提示
+            if (plugin.getPlayerJoinListener() != null
+                    && plugin.getPlayerJoinListener().isPerServerQueueMode()
+                    && listener.isInQueue(player.getUniqueId())) {
+                player.sendMessage(languageManager.getMessage("already-in-queue"));
+                return;
+            }
+            plugin.getServerSelectorMenu().open(player);
             return;
         }
 

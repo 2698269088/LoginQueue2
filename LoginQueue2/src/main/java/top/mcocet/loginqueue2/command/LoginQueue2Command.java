@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 public class LoginQueue2Command implements CommandExecutor, TabCompleter {
 
@@ -131,6 +132,24 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        if (listener.isPerServerQueueMode()) {
+            Map<String, Integer> serverQueueSizes = listener.getServerQueueSizes();
+            sender.sendMessage(languageManager.getMessage("queue-list-header"));
+            if (serverQueueSizes.isEmpty()) {
+                sender.sendMessage(languageManager.getMessage("queue-list-empty"));
+            } else {
+                for (Map.Entry<String, Integer> entry : serverQueueSizes.entrySet()) {
+                    sender.sendMessage(ChatColor.YELLOW + entry.getKey() + ": " + entry.getValue() + " 人排队");
+                }
+                List<String> queueList = listener.getQueuePlayerNames();
+                for (int i = 0; i < queueList.size(); i++) {
+                    sender.sendMessage(ChatColor.YELLOW + String.valueOf(i + 1) + ". " + queueList.get(i));
+                }
+            }
+            sender.sendMessage(languageManager.getMessage("queue-list-footer"));
+            return true;
+        }
+
         List<String> queueList = listener.getQueuePlayerNames();
         sender.sendMessage(languageManager.getMessage("queue-list-header"));
         if (queueList.isEmpty()) {
@@ -208,7 +227,14 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
             }
         }
         sender.sendMessage(languageManager.getMessage("balance-strategy", "strategy", balanceStrategy));
-        sender.sendMessage(languageManager.getMessage("status-queue-size", "size", String.valueOf(listener.getQueueSize())));
+        if (listener.isPerServerQueueMode()) {
+            Map<String, Integer> serverQueueSizes = listener.getServerQueueSizes();
+            for (Map.Entry<String, Integer> entry : serverQueueSizes.entrySet()) {
+                sender.sendMessage(languageManager.getMessage("status-server-queue-size", "server", entry.getKey(), "size", String.valueOf(entry.getValue())));
+            }
+        } else {
+            sender.sendMessage(languageManager.getMessage("status-queue-size", "size", String.valueOf(listener.getQueueSize())));
+        }
         sender.sendMessage(languageManager.getMessage("status-footer"));
         return true;
     }

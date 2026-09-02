@@ -17,6 +17,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import top.mcocet.loginqueue2.LoginQueue2;
+import top.mcocet.loginqueue2.gui.ServerSelectorMenu;
 import top.mcocet.loginqueue2.util.LanguageManager;
 import top.mcocet.loginqueue2.util.SchedulerUtil;
 import top.mcocet.loginqueue2.world.LoginWorldManager;
@@ -193,6 +194,32 @@ public class QueueItemListener implements Listener {
     private void handleQueueItemClick(Player player) {
         if (listener.isInQueue(player.getUniqueId())) {
             player.sendMessage(languageManager.getMessage("already-in-queue"));
+            return;
+        }
+
+        // 认证模式下必须先完成登录/注册才能打开菜单或入队
+        String activeAuth = plugin.getActiveAuthSystem();
+        if ("BUILTIN".equals(activeAuth)
+                && plugin.getAuthRestrictionListener() != null
+                && !plugin.getAuthRestrictionListener().isAuthenticated(player.getUniqueId())) {
+            player.sendMessage(languageManager.getMessage("auth-please-login-first"));
+            return;
+        }
+        if ("AUTHME".equals(activeAuth) && !plugin.getAuthMeCompatManager().isAuthenticated(player)) {
+            player.sendMessage(languageManager.getMessage("authme-please-login-first"));
+            return;
+        }
+
+        // 如果启用了 UDP 服务器选择菜单，打开菜单让玩家选择目标服务器
+        if (ServerSelectorMenu.isEnabled(plugin)) {
+            // 多服务器独立队列模式下，如果玩家已在队列中则提示
+            if (plugin.getPlayerJoinListener() != null
+                    && plugin.getPlayerJoinListener().isPerServerQueueMode()
+                    && listener.isInQueue(player.getUniqueId())) {
+                player.sendMessage(languageManager.getMessage("already-in-queue"));
+                return;
+            }
+            plugin.getServerSelectorMenu().open(player);
             return;
         }
 

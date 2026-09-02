@@ -16,6 +16,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import top.mcocet.loginqueue2limbo.LoginQueue2Limbo;
 import top.mcocet.loginqueue2limbo.bungee.BungeeMessenger;
+import top.mcocet.loginqueue2limbo.gui.ServerSelectorMenu;
 import top.mcocet.loginqueue2limbo.util.LanguageManager;
 
 public class QueueItemListener implements Listener {
@@ -128,6 +129,27 @@ public class QueueItemListener implements Listener {
     private void handleQueueItemClick(Player player) {
         if (listener.isInQueue(player.getUniqueId())) {
             player.sendMessage(languageManager.getMessage("already-in-queue"));
+            return;
+        }
+
+        // 认证模式下，未登录玩家不能使用队列物品
+        if (plugin.getAuthManager().isEnabled()
+                && plugin.getAuthRestrictionListener() != null
+                && !plugin.getAuthRestrictionListener().isAuthenticated(player.getUniqueId())) {
+            player.sendMessage(languageManager.getMessage("auth-please-login-first"));
+            return;
+        }
+
+        // 如果启用了 UDP 服务器选择菜单，打开菜单让玩家选择目标服务器
+        if (ServerSelectorMenu.isEnabled(plugin)) {
+            // 多服务器独立队列模式下，如果玩家已在队列中则提示
+            if (plugin.getPlayerJoinListener() != null
+                    && plugin.getPlayerJoinListener().isPerServerQueueMode()
+                    && listener.isInQueue(player.getUniqueId())) {
+                player.sendMessage(languageManager.getMessage("already-in-queue"));
+                return;
+            }
+            plugin.getServerSelectorMenu().open(player);
             return;
         }
 
