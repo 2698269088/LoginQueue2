@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class LoginQueue2Online extends JavaPlugin implements Listener {
 
     /** 协议版本号：用于跨插件通信版本兼容性检查 */
-    public static final String PROTOCOL_VERSION = "1.5";
+    public static final String PROTOCOL_VERSION = "1.6";
 
     public static final String CHANNEL_SERVER_INFO = "loginqueue2:serverinfo";
 

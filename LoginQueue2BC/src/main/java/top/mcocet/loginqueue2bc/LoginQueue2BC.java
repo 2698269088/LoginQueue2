@@ -20,7 +20,7 @@ import java.nio.file.Files;
 public final class LoginQueue2BC extends Plugin {
 
     /** 协议版本号：用于跨插件通信版本兼容性检查 */
-    public static final String PROTOCOL_VERSION = "1.5";
+    public static final String PROTOCOL_VERSION = "1.6";
 
     public static final String CHANNEL_CONNECT_OTHER = "loginqueue2:connectother";
     public static final String CHANNEL_CONNECT_REQUEST = "loginqueue2:connectrequest";
