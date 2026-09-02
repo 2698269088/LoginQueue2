@@ -18,6 +18,7 @@ A next-generation Minecraft login queue solution, providing high-performance pla
 - **Dimension & Spawn Protection**: Prevents entry into Nether/End, disables portals, and protects the spawn area
 - **Performance-Saving Mode**: Disables mob spawning, time flow, and weather changes
 - **UDP Status Sync**: Retrieves subserver status directly via UDP without requiring a proxy plugin
+- **Cross-Server Virtual Queue (/connect)**: Players on subservers can join the login server queue via `/connect <target-server>` and be automatically transferred when allowed
 - **Built-in Authentication**: Optional register/login/password change functionality, with AuthMe compatibility mode
 - **Beacon Queuing**: In manual queue mode, players click a beacon item to join the queue
 - **Server Status Scoreboard**: Real-time display of online status for all main servers
@@ -28,13 +29,20 @@ A next-generation Minecraft login queue solution, providing high-performance pla
 
 ### One Plugin Handles Almost Everything
 
-Since **version 1.3**, **a single `LoginQueue2` (or `LoginQueue2Limbo`) main plugin can handle 99% of the functionality**, allowing for a nearly perfect login queue experience without needing the Online/BC/VC companion plugins.
-
 - **Single Server Mode**: Just install the `LoginQueue2` main plugin on your login server (Lobby). That's it.
 - **Network Mode (UDP Priority - Recommended)**: Install `LoginQueue2` on the login server and `LoginQueue2Online` on each main server for status reporting. No BC/VC proxy plugins required.
 - **The Only Exception**: Remote main server **TPS (ticks per second)** cannot be obtained by a single server alone. It requires the `LoginQueue2Online` plugin (via UDP) or a proxy plugin (BC/VC) to provide complete server load data. If you don't need precise TPS monitoring, the main plugin alone is fully sufficient.
 
 > **Note**: Unless new features are required, the BC/VC and Online companion plugins typically do not need to be updated. These plugins are functionally stable and only need to remain compatible with the main plugin version.
+
+### `/connect` Cross-Server Virtual Queue
+
+Since **version 1.6**, subserver players can join the login server queue using `/connect <target-server>`, enabling cross-server queuing.
+
+- **Requirements**: Both the main plugin and `LoginQueue2Online` must be upgraded to 1.6+, and UDP sync plus `/connect` virtual queue must be configured correctly on both ends
+- **Subserver**: Install `LoginQueue2Online`, enable `udp-sync.main-plugin.enabled`, and configure the main plugin UDP address and secret key
+- **Main Plugin**: Enable `udp-sync.connect-queue.enabled`, and configure `secret-key` for each subserver in `udp-sync.servers` using the subserver name
+- **Key Consistency**: The subserver's `udp-sync.main-plugin.secret-key` must exactly match the `secret-key` configured for that server entry on the main plugin
 
 ---
 
@@ -61,7 +69,7 @@ LoginQueue2/
 |--------|----------|---------|-----------|
 | **LoginQueue2** | Spigot / Paper / Folia 1.13+ | Main plugin providing login queue, player restrictions, commands, load balancing, and all core features | **Yes** |
 | **LoginQueue2Limbo** | Limbo | Lightweight login server plugin with identical features to the main plugin, adapted for Limbo | As needed |
-| **LoginQueue2Online** | Spigot / Paper / Folia 1.14+ | Subserver plugin reporting online status and TPS via UDP | Recommended (for multi-main) |
+| **LoginQueue2Online** | Spigot / Paper / Folia 1.14+ | Subserver plugin reporting online status and TPS via UDP; supports `/connect` cross-server virtual queue | Recommended (for multi-main) |
 | **LoginQueue2BC** | BungeeCord | Proxy plugin handling cross-server transfers and server info queries (BC channel mode) | Optional |
 | **LoginQueue2VC** | Velocity 3.x | Velocity proxy plugin with same functionality as LS2BC | Optional |
 
@@ -238,6 +246,14 @@ udp-sync:
   priority: BC_CHANNEL
   timeout: 3000
   planned-key: "loginqueue2"
+  # /connect cross-server virtual queue configuration
+  connect-queue:
+    # Enable receiving /connect virtual queue requests from subservers
+    enabled: false
+    # Main plugin UDP server listening port (subservers send requests to this port)
+    server-port: 16648
+    # Queue status broadcast interval (seconds); 0 disables broadcasting
+    status-interval: 3
   servers:
     - name: "main1"
       host: "127.0.0.1"
@@ -337,11 +353,44 @@ scoreboard:
 Edit `plugins/LoginQueue2Online/config.yml`:
 
 ```yaml
-# Current subserver name in proxy (must match the name configured in LS2)
+# Current subserver name in proxy/main plugin (must match the name configured in LS2)
 server-name: "main"
 
 # Interval for broadcasting server info to proxy (seconds)
 refresh-interval: 5
+
+# UDP server status synchronization
+udp-sync:
+  # Enable UDP server status response
+  enabled: true
+  # UDP listening port (login server queries this port)
+  port: 16647
+  # SHA256 communication key (leave empty to auto-generate; must match main plugin config)
+  secret-key: ""
+  # Planned pre-shared key (used to encrypt the communication key)
+  planned-key: "loginqueue2"
+  # Main plugin UDP connection config (used for /connect virtual queue)
+  main-plugin:
+    # Enable /connect virtual queue
+    enabled: true
+    # Main plugin (LQ2/LQ2Limbo) UDP server address
+    host: "127.0.0.1"
+    # Main plugin UDP server port
+    port: 16648
+    # Communication key; must match the secret-key for this server in main plugin's udp-sync.servers
+    secret-key: ""
+    # Request timeout (milliseconds)
+    timeout: 3000
+
+# Server list (used for /connect tab completion)
+server-list:
+  - "lobby"
+  - "main"
+  - "minigames"
+
+messages:
+  # Virtual queue status hint
+  virtual-queue-status: "&a[Queue] &fYou are position &e{position}&f, target server online &e{online}&f/&e{max}&f."
 ```
 
 ---
@@ -393,7 +442,12 @@ Commands are identical to the main plugin. Supports `/logseq`, `/ls`, and `/lq` 
 
 ### LoginQueue2Online (Subserver)
 
-This plugin has no commands. It runs automatically after startup and reports server status to the login server via UDP.
+| Command | Permission | Description |
+|---------|------------|-------------|
+| `/connect <server> [player]` | `loginqueue2online.connect` | Join the target server queue; when virtual queue is enabled, queues via UDP to the main plugin |
+| `/connect <server> <player>` | `loginqueue2online.connect.others` | Add another player to the target server queue |
+
+> Apart from `/connect`, this plugin has no other commands. After startup it automatically reports server status to the login server via UDP.
 
 ---
 
@@ -413,6 +467,13 @@ This plugin has no commands. It runs automatically after startup and reports ser
 | `loginqueue2.admin.bypass` | Bypass login server restrictions (movement, interaction, etc.) |
 | `loginqueue2.vip` | VIP queue priority |
 | `loginqueue2.priority` | Priority queue permission |
+
+### LoginQueue2Online
+
+| Permission | Description |
+|------------|-------------|
+| `loginqueue2online.connect` | Allow using `/connect` to join the target server queue |
+| `loginqueue2online.connect.others` | Allow using `/connect` for other players |
 
 ---
 
@@ -468,8 +529,9 @@ This plugin has no commands. It runs automatically after startup and reports ser
 - Real-time reporting of online count, max capacity, online status, and **TPS**
 - AES encrypted communication with pre-shared key support
 - Automatically broadcast status to the login server at regular intervals
+- **/connect Cross-Server Virtual Queue**: Players on subservers can send virtual queue requests to the main plugin via `/connect <target-server>`; when allowed, the login server notifies the subserver to transfer the player automatically
 
-**Characteristics**: No commands, no configuration interface, runs automatically after configuration
+**Characteristics**: No commands other than `/connect`, runs automatically after configuration
 
 > **Why is it needed?** The main plugin can obtain subserver online counts through BungeeCord native channels, but **cannot obtain remote server TPS**. `LoginQueue2Online` reports TPS and other detailed status to the login server via UDP, enabling the `LEAST_LOAD` balancing strategy to work properly. If you only use `LEAST_PLAYERS` or `ROUND_ROBIN` strategies and don't need TPS monitoring, this plugin can theoretically be omitted.
 

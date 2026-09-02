@@ -16,9 +16,26 @@ udp-sync:
   # 此密钥只能手动配置，不会通过网络传输，建议两端配置相同
   # 建议修改为非预设密钥
   planned-key: "loginqueue2"
-  
+  # 主插件 UDP 连接配置（用于 /connect 虚拟排队）
+  # 启用后，玩家使用 /connect 会先把请求发给主插件排队
+  main-plugin:
+    # 是否启用 /connect 虚拟排队功能
+    enabled: false
+    # 主插件（LQ2/LQ2Limbo）UDP 服务端地址
+    host: "127.0.0.1"
+    # 主插件 UDP 服务端端口
+    port: 16648
+    # 通信密钥，需要与主插件 udp-sync.servers 中本服务器的 secret-key 一致
+    secret-key: ""
+    # 请求超时时间（毫秒）
+    timeout: 3000
+
   # 服务器列表（用于 /connect 指令 Tab 补全）
   server-list:
     - "lobby"
     - "main"
     - "minigames"
+
+messages:
+  # 虚拟排队状态提示
+  virtual-queue-status: "&a[队列] &f当前排在第 &e{position} &f位，目标服在线 &e{online}&f/&e{max}&f。"

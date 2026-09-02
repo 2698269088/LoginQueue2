@@ -51,7 +51,23 @@ public class ConnectCommand implements TabExecutor {
             target = (Player) sender;
         }
 
-        // 使用 BungeeCord 通道发送玩家到指定服务器
+        // 如果启用了 UDP 虚拟排队，则发送请求给主插件
+        if (plugin.isVirtualQueueEnabled()) {
+            if (plugin.isInVirtualQueue(target.getUniqueId())) {
+                sender.sendMessage("§c你已经在虚拟排队中，请耐心等待。");
+                return true;
+            }
+            plugin.requestVirtualQueue(target, serverName);
+            if (target.equals(sender)) {
+                sender.sendMessage("§a已请求加入服务器队列: " + serverName);
+            } else {
+                sender.sendMessage("§a已将玩家 " + target.getName() + " 加入服务器队列: " + serverName);
+                target.sendMessage("§a管理员已将你加入服务器队列: " + serverName);
+            }
+            return true;
+        }
+
+        // 未启用虚拟排队时，使用 BungeeCord 通道直接发送
         target.sendPluginMessage(plugin, "BungeeCord", buildConnectData(serverName));
         if (target.equals(sender)) {
             sender.sendMessage("§a正在连接到服务器: " + serverName);

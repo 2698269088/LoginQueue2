@@ -130,8 +130,9 @@ public class ServerInfoListener implements PluginMessageListener {
         try {
             Method getGlobalRegionScheduler = Bukkit.getServer().getClass().getMethod("getGlobalRegionScheduler");
             Object scheduler = getGlobalRegionScheduler.invoke(Bukkit.getServer());
-            Method runAtFixedRate = scheduler.getClass().getMethod("runAtFixedRate", org.bukkit.plugin.Plugin.class, java.util.function.Consumer.class, long.class, long.class);
-            runAtFixedRate.invoke(scheduler, plugin, (java.util.function.Consumer<?>) scheduledTask -> task.run(), 1L, interval);
+            Class<?> scheduledTaskClass = Class.forName("io.papermc.paper.threadedregions.scheduler.ScheduledTask");
+            Method runAtFixedRate = scheduler.getClass().getMethod("runAtFixedRate", JavaPlugin.class, long.class, long.class, scheduledTaskClass);
+            runAtFixedRate.invoke(scheduler, plugin, 1L, interval, (Object) null);
         } catch (Exception e) {
             plugin.getLogger().warning("启动 Folia 定时任务失败: " + e.getMessage());
         }

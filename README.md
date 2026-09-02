@@ -18,6 +18,7 @@
 - **维度与出生点保护**：禁止进入下界/末地，禁用传送门，保护出生点区域
 - **性能节省模式**：禁用生物生成、时间流逝、天气更替
 - **UDP 状态同步**：通过 UDP 直接获取子服务器状态，无需代理端插件
+- **跨服虚拟排队（/connect）**：子服玩家可通过 `/connect <目标服务器>` 加入登录服的对应服务器队列，排到后由登录服通知子服自动跳转
 - **内置认证系统**：可选的注册/登录/改密码功能，同时支持 AuthMe 兼容模式
 - **信标排队**：手动排队模式下，玩家点击信标物品加入队列
 - **服务器状态计分板**：实时显示各主服务器在线状态
@@ -28,13 +29,20 @@
 
 ### 单插件即可完成绝大多数功能
 
-自 **1.3 版本**起，**仅靠一个 `LoginQueue2`（或 `LoginQueue2Limbo`）主插件就可以完成 99% 的功能**，无需安装 Online/BC/VC 等配套插件即可实现接近完美的登录队列体验。
-
 - **单服务器模式**：只需在登录服（Lobby）安装 `LoginQueue2` 主插件即可
 - **群组服模式（UDP 优先 - 推荐）**：登录服安装 `LoginQueue2`，各主服务器安装 `LoginQueue2Online` 用于状态上报。无需安装 BC/VC 代理端插件
 - **唯一例外**：远程主服务器的 **TPS** 信息无法通过单个服务器获取，需要依赖 UDP 状态上报插件（Online）或代理端插件（BC/VC）来提供完整的服务器负载数据。如果你不需要精确的 TPS 监控，单个主插件完全足够
 
 > **提示**：除非新功能需要，否则通常不需要更新 BC/VC 和 Online 端插件。这些配套插件功能稳定，只需保持与主插件版本兼容即可。
+
+### `/connect` 跨服虚拟排队
+
+自 **1.6 版本**起，支持子服玩家通过 `/connect <目标服务器>` 命令加入登录服队列，实现跨服排队。
+
+- **使用条件**：主插件与 `LoginQueue2Online` 子服插件均升级到 1.6+，且两端 UDP 同步与 `/connect` 虚拟排队配置正确
+- **子服**：安装 `LoginQueue2Online`，开启 `udp-sync.main-plugin.enabled`，并配置主插件 UDP 地址与密钥
+- **主插件**：开启 `udp-sync.connect-queue.enabled`，并在 `udp-sync.servers` 中按子服名称配置 `secret-key`
+- **密钥一致性**：子服 `udp-sync.main-plugin.secret-key` 必须和主插件对应服务器条目中的 `secret-key` 完全一致
 
 ---
 
@@ -61,7 +69,7 @@ LoginQueue2/
 |------|------|------|----------|
 | **LoginQueue2** | Spigot / Paper / Folia 1.13+ | 主插件，提供登录队列、玩家限制、指令、负载均衡等全部核心功能 | **是** |
 | **LoginQueue2Limbo** | Limbo | 轻量级登录服插件，功能同主插件但适配 Limbo 平台 | 按需 |
-| **LoginQueue2Online** | Spigot / Paper / Folia 1.14+ | 子服务器插件，通过 UDP 上报本服务器在线状态与 TPS | 推荐（多主服时） |
+| **LoginQueue2Online** | Spigot / Paper / Folia 1.14+ | 子服务器插件，通过 UDP 上报本服务器在线状态与 TPS；支持 `/connect` 跨服虚拟排队 | 推荐（多主服时） |
 | **LoginQueue2BC** | BungeeCord | 代理端插件，处理跨服转移和服务器信息查询（BC 通道模式） | 可选 |
 | **LoginQueue2VC** | Velocity 3.x | Velocity 代理端插件，功能同 LS2BC | 可选 |
 
@@ -238,6 +246,14 @@ udp-sync:
   priority: BC_CHANNEL
   timeout: 3000
   planned-key: "loginqueue2"
+  # /connect 跨服虚拟排队配置
+  connect-queue:
+    # 是否启用接收子服的 /connect 虚拟排队请求
+    enabled: false
+    # 主插件 UDP 服务端监听端口（子服通过此端口发送请求）
+    server-port: 16648
+    # 队列状态广播间隔（秒），0 表示不广播
+    status-interval: 3
   servers:
     - name: "main1"
       host: "127.0.0.1"
@@ -337,11 +353,44 @@ scoreboard:
 编辑 `plugins/LoginQueue2Online/config.yml`：
 
 ```yaml
-# 当前子服务器在代理端中的名称（必须与 LS2 配置中的名称一致）
+# 当前子服务器在代理端/主插件中的名称（必须和 LS2 配置中的名称一致）
 server-name: "main"
 
 # 向代理端广播服务器信息的周期（秒）
 refresh-interval: 5
+
+# UDP 服务器信息同步配置
+udp-sync:
+  # 是否启用 UDP 服务器信息响应
+  enabled: true
+  # UDP 监听端口（登录服向此端口查询状态）
+  port: 16647
+  # SHA256 通信密钥（留空则随机生成，需要与主插件配置保持一致）
+  secret-key: ""
+  # 计划好的预共享密钥（用于加密传输通信密钥）
+  planned-key: "loginqueue2"
+  # 主插件 UDP 连接配置（用于 /connect 虚拟排队）
+  main-plugin:
+    # 是否启用 /connect 虚拟排队
+    enabled: true
+    # 主插件（LQ2/LQ2Limbo）UDP 服务端地址
+    host: "127.0.0.1"
+    # 主插件 UDP 服务端端口
+    port: 16648
+    # 通信密钥，需要与主插件 udp-sync.servers 中本服务器的 secret-key 一致
+    secret-key: ""
+    # 请求超时时间（毫秒）
+    timeout: 3000
+
+# 服务器列表（用于 /connect 指令 Tab 补全）
+server-list:
+  - "lobby"
+  - "main"
+  - "minigames"
+
+messages:
+  # 虚拟排队状态提示
+  virtual-queue-status: "&a[队列] &f当前排在第 &e{position} &f位，目标服在线 &e{online}&f/&e{max}&f。"
 ```
 
 ---
@@ -393,7 +442,12 @@ refresh-interval: 5
 
 ### LoginQueue2Online（子服务器）
 
-该插件无指令，启动后自动运行，通过 UDP 向登录服上报服务器状态信息。
+| 指令 | 权限 | 说明 |
+|------|------|------|
+| `/connect <服务器名> [玩家名]` | `loginqueue2online.connect` | 加入目标服务器队列；若启用虚拟排队，则通过 UDP 向主插件排队 |
+| `/connect <服务器名> <玩家名>` | `loginqueue2online.connect.others` | 将其他玩家加入目标服务器队列 |
+
+> 该插件除 `/connect` 外无其他指令。启动后自动通过 UDP 向登录服上报服务器状态信息。
 
 ---
 
@@ -413,6 +467,13 @@ refresh-interval: 5
 | `loginqueue2.admin.bypass` | 不受登录服限制（移动、交互等） |
 | `loginqueue2.vip` | VIP 排队优先级 |
 | `loginqueue2.priority` | 优先排队权限 |
+
+### LoginQueue2Online
+
+| 权限 | 说明 |
+|------|------|
+| `loginqueue2online.connect` | 允许使用 `/connect` 加入目标服务器队列 |
+| `loginqueue2online.connect.others` | 允许为其他玩家使用 `/connect` |
 
 ---
 
@@ -468,8 +529,9 @@ refresh-interval: 5
 - 实时上报本服务器的在线人数、最大人数、在线状态、**TPS**
 - 使用 AES 加密通信，支持预共享密钥
 - 自动定期向登录服广播状态信息
+- **/connect 跨服虚拟排队**：子服玩家可通过 `/connect <目标服务器>` 向登录服主插件发起虚拟排队请求，排到后由登录服通知子服完成自动跳转
 
-**特点**: 无指令、无配置界面，配置后自动运行
+**特点**: 除 `/connect` 外无其他指令，配置后自动运行
 
 > **为什么需要它？** 主插件可以通过 BungeeCord 原生通道获取子服务器的在线人数，但 **无法获取远程服务器的 TPS**。`LoginQueue2Online` 通过 UDP 将 TPS 等详细状态上报给登录服，使负载均衡策略 `LEAST_LOAD` 能够正常工作。如果你只使用 `LEAST_PLAYERS` 或 `ROUND_ROBIN` 策略，且不需要 TPS 监控，理论上可以省略此插件。
 

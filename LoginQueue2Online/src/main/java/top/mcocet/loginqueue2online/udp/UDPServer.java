@@ -11,6 +11,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -26,6 +27,9 @@ public class UDPServer {
     private static final String TYPE_KEY_RESPONSE = "KEY_RESP";
     private static final String TYPE_KEY_ERROR = "KEY_ERR";
     private static final String TYPE_SERVER_INFO_RESPONSE = "INFO_RESP";
+    private static final String TYPE_CONNECT_RESPONSE = "CONN_RESP";
+    private static final String TYPE_QUEUE_STATUS = "QUEUE_STATUS";
+    private static final String TYPE_CONNECT_ALLOW = "CONN_ALLOW";
     private static final String SEPARATOR = "|";
 
     private final JavaPlugin plugin;
@@ -142,9 +146,150 @@ public class UDPServer {
             case TYPE_SERVER_INFO_REQUEST:
                 handleServerInfoRequest(clientAddress, clientPort, payload);
                 break;
+            case TYPE_CONNECT_RESPONSE:
+                handleConnectResponse(payload);
+                break;
+            case TYPE_QUEUE_STATUS:
+                handleQueueStatus(payload);
+                break;
+            case TYPE_CONNECT_ALLOW:
+                handleConnectAllow(payload);
+                break;
             default:
                 plugin.getLogger().warning("UDP 收到未知消息类型: " + type);
                 break;
+        }
+    }
+
+    /**
+     * 处理主插件返回的 /connect 请求响应
+     * 格式: CONN_RESP|serverName|encryptedPayload
+     * payload: uuid|success|position|online|max|message
+     */
+    private void handleConnectResponse(String payload) {
+        int sepIndex = payload.indexOf(SEPARATOR);
+        if (sepIndex < 0) {
+            return;
+        }
+        String encryptedPayload = payload.substring(sepIndex + 1);
+        if (secretKey == null) {
+            plugin.getLogger().warning("UDP 收到连接响应但无密钥，无法解密。");
+            return;
+        }
+        String decrypted;
+        try {
+            decrypted = CryptoUtil.decryptWithStringKey(encryptedPayload, secretKey);
+        } catch (Exception e) {
+            plugin.getLogger().warning("UDP 连接响应解密失败: " + e.getMessage());
+            return;
+        }
+
+        String[] parts = decrypted.split("\\|", 6);
+        if (parts.length < 5) {
+            return;
+        }
+        UUID uuid;
+        try {
+            uuid = UUID.fromString(parts[0]);
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        boolean success = Boolean.parseBoolean(parts[1]);
+        int position = parseInt(parts[2]);
+        int online = parseInt(parts[3]);
+        int max = parseInt(parts[4]);
+        String message = parts.length >= 6 ? parts[5] : "";
+
+        if (plugin instanceof LoginQueue2Online) {
+            ((LoginQueue2Online) plugin).handleVirtualQueueResponse(uuid, success, position, online, max, message);
+        }
+    }
+
+    /**
+     * 处理主插件广播的队列状态
+     * 格式: QUEUE_STATUS|serverName|encryptedPayload
+     * payload: uuid|position|online|max
+     */
+    private void handleQueueStatus(String payload) {
+        int sepIndex = payload.indexOf(SEPARATOR);
+        if (sepIndex < 0) {
+            return;
+        }
+        String encryptedPayload = payload.substring(sepIndex + 1);
+        if (secretKey == null) {
+            return;
+        }
+        String decrypted;
+        try {
+            decrypted = CryptoUtil.decryptWithStringKey(encryptedPayload, secretKey);
+        } catch (Exception e) {
+            return;
+        }
+
+        String[] parts = decrypted.split("\\|", 4);
+        if (parts.length < 4) {
+            return;
+        }
+        UUID uuid;
+        try {
+            uuid = UUID.fromString(parts[0]);
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        int position = parseInt(parts[1]);
+        int online = parseInt(parts[2]);
+        int max = parseInt(parts[3]);
+
+        if (plugin instanceof LoginQueue2Online) {
+            ((LoginQueue2Online) plugin).handleVirtualQueueStatus(uuid, position, online, max);
+        }
+    }
+
+    /**
+     * 处理主插件发送的放行通知
+     * 格式: CONN_ALLOW|serverName|encryptedPayload
+     * payload: uuid|targetServer
+     */
+    private void handleConnectAllow(String payload) {
+        int sepIndex = payload.indexOf(SEPARATOR);
+        if (sepIndex < 0) {
+            return;
+        }
+        String encryptedPayload = payload.substring(sepIndex + 1);
+        if (secretKey == null) {
+            plugin.getLogger().warning("UDP 收到放行通知但无密钥，无法解密。");
+            return;
+        }
+        String decrypted;
+        try {
+            decrypted = CryptoUtil.decryptWithStringKey(encryptedPayload, secretKey);
+        } catch (Exception e) {
+            plugin.getLogger().warning("UDP 放行通知解密失败: " + e.getMessage());
+            return;
+        }
+
+        String[] parts = decrypted.split("\\|", 2);
+        if (parts.length < 2) {
+            return;
+        }
+        UUID uuid;
+        try {
+            uuid = UUID.fromString(parts[0]);
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        String targetServer = parts[1];
+
+        if (plugin instanceof LoginQueue2Online) {
+            ((LoginQueue2Online) plugin).handleVirtualQueueAllow(uuid, targetServer);
+        }
+    }
+
+    private int parseInt(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 
