@@ -25,7 +25,7 @@ import java.util.concurrent.Executors;
 public class UDPClient {
 
     /** 协议版本号：用于跨插件通信版本兼容性检查 */
-    public static final String PROTOCOL_VERSION = "1.5";
+    public static final String PROTOCOL_VERSION = "1.6";
 
     private static final String TYPE_KEY_REQUEST = "KEY_REQ";
     private static final String TYPE_KEY_EXCHANGE = "KEY_EXCH";
@@ -61,7 +61,7 @@ public class UDPClient {
         this.host = host;
         this.port = port;
         this.gamePort = gamePort;
-        this.timeout = timeout;
+        this.timeout = timeout > 0 ? timeout : 3000;
         this.configuredKey = configuredKey;
         this.plannedKey = plannedKey;
     }
@@ -556,6 +556,10 @@ public class UDPClient {
 
     public String getSecretKey() {
         return secretKey;
+    }
+
+    public int getTimeout() {
+        return timeout;
     }
 
     /**

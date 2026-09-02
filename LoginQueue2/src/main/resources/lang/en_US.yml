@@ -252,6 +252,7 @@ log-messages:
   udp-decrypted-data: "UDP [{server}] decrypted data: {data}"
   udp-server-info-data-error: "UDP [{server}] server info data format error: {data}"
   udp-server-info-parse-failed: "UDP [{server}] server info data parse failed: {error}"
+  udp-server-info-received: "[DEBUG] UDP [{server}] server info received: {status}"
   udp-get-server-info: "UDP [{server}] got server info: {status}"
   udp-socket-not-ready: "UDP [{server}] Socket not initialized or closed, cannot send request."
   udp-sending-data: "UDP [{server}] sending data to {host}:{port}, length: {length} bytes"
@@ -321,7 +322,9 @@ log-messages:
   bc-serverip-failed: "[DEBUG] tryRefreshViaBC: ServerIP request failed: {error}"
   bc-result: "[DEBUG] tryRefreshViaBC: result={result}, cache size={cacheSize}"
   # Protocol version mismatch
+  protocol-version-mismatch-header: "================================================="
   version-mismatch-warning: "Protocol version mismatch warning: local plugin version [{localVersion}] vs remote plugin [{server}] version [{remoteVersion}]."
+  udp-version-mismatch-warning: "Protocol version mismatch warning (UDP): local plugin version [{localVersion}] vs remote plugin [{server}] version [{remoteVersion}]."
   version-mismatch-suggestion: "Suggestion: Please unify all LoginQueue2 plugin versions, or ensure protocol compatibility."
   version-mismatch-note: "Unless new features are needed, usually no need to update BC/VC/Online plugins."
   version-check-request-sent: "Protocol version check request sent to proxy"

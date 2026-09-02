@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class BungeeMessenger implements Listener {
 
     /** 协议版本号：用于跨插件通信版本兼容性检查 */
-    public static final String PROTOCOL_VERSION = "1.5";
+    public static final String PROTOCOL_VERSION = "1.6";
 
     /** 自定义消息通道：用于通知代理端将指定玩家转移到目标服务器 */
     public static final String CHANNEL_CONNECT_OTHER = "loginqueue2:connectother";
@@ -306,33 +306,50 @@ public class BungeeMessenger implements Listener {
 
     /**
      * 尝试通过 UDP 获取所有服务器信息
+     * 所有请求在 UDPClient 内部线程池中并发执行，主线程不再阻塞等待，
+     * 响应到达后通过回调更新缓存，避免阻塞 Server Thread 导致 Watchdog 报错。
      *
-     * @return 是否至少有一个成功
+     * @return 是否已发起至少一个 UDP 请求（由于结果是异步返回的，返回 true 仅代表请求已分派）
      */
     private boolean tryRefreshViaUDP() {
-        boolean anySuccess = false;
         if (isDebug()) {
             log(languageManager.getLogMessage("udp-refresh-start", "count", String.valueOf(udpClients.size())));
         }
+
+        List<CompletableFuture<BungeeMessenger.ServerStatus>> futures = new ArrayList<>();
         for (UDPClient client : udpClients) {
-            if (isDebug()) {
-                log(languageManager.getLogMessage("udp-request-server-info", "server", client.getServerName()));
-            }
-            ServerStatus status = client.requestServerInfo();
-            if (status != null) {
-                serverStatusCache.put(status.getServerName(), status);
-                lastServerInfoTimeMap.put(status.getServerName(), System.currentTimeMillis());
-                anySuccess = true;
-                if (isDebug()) {
-                    log(languageManager.getLogMessage("udp-get-success", "status", status.toString()));
-                }
-            } else {
+            if (!client.isInitialized()) {
                 if (isDebug()) {
                     log(languageManager.getLogMessage("udp-get-failed", "server", client.getServerName()));
                 }
+                continue;
             }
+            if (isDebug()) {
+                log(languageManager.getLogMessage("udp-request-server-info", "server", client.getServerName()));
+            }
+            futures.add(client.requestServerInfoAsync());
         }
-        return anySuccess;
+
+        if (futures.isEmpty()) {
+            return false;
+        }
+
+        // 非阻塞回调：请求完成后统一更新缓存，不占用主线程
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                .whenComplete((v, t) -> {
+                    for (CompletableFuture<BungeeMessenger.ServerStatus> future : futures) {
+                        ServerStatus status = future.getNow(null);
+                        if (status != null) {
+                            serverStatusCache.put(status.getServerName(), status);
+                            lastServerInfoTimeMap.put(status.getServerName(), System.currentTimeMillis());
+                            if (isDebug()) {
+                                log(languageManager.getLogMessage("udp-get-success", "status", status.toString()));
+                            }
+                        }
+                    }
+                });
+
+        return true;
     }
 
     /**

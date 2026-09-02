@@ -252,6 +252,7 @@ log-messages:
   udp-decrypted-data: "UDP [{server}] 解密後資料: {data}"
   udp-server-info-data-error: "UDP [{server}] 伺服器資訊資料格式錯誤: {data}"
   udp-server-info-parse-failed: "UDP [{server}] 伺服器資訊資料解析失敗: {error}"
+  udp-server-info-received: "[DEBUG] UDP [{server}] 收到伺服器資訊: {status}"
   udp-get-server-info: "UDP [{server}] 取得伺服器資訊: {status}"
   udp-socket-not-ready: "UDP [{server}] Socket 未初始化或已關閉，無法發送請求。"
   udp-sending-data: "UDP [{server}] 發送資料到 {host}:{port}，長度: {length} 位元組"
@@ -321,7 +322,9 @@ log-messages:
   bc-serverip-failed: "[DEBUG] tryRefreshViaBC: 發送ServerIP請求失敗: {error}"
   bc-result: "[DEBUG] tryRefreshViaBC: 返回結果={result}, 快取大小={cacheSize}"
   # 協定版本不匹配
+  protocol-version-mismatch-header: "================================================="
   version-mismatch-warning: "協定版本不匹配警告: 本地插件協定版本 [{localVersion}] 與遠端插件 [{server}] 協定版本 [{remoteVersion}] 不一致。"
+  udp-version-mismatch-warning: "協定版本不匹配警告 (UDP): 本地插件協定版本 [{localVersion}] 與遠端插件 [{server}] 協定版本 [{remoteVersion}] 不一致。"
   version-mismatch-suggestion: "建議: 請統一所有 LoginQueue2 插件的版本，或至少確保各插件協定版本相容。"
   version-mismatch-note: "除非新功能需要，通常不需要更新 BC/VC/Online 端插件。"
   version-check-request-sent: "已發送協定版本檢查請求到代理端"
