@@ -1,0 +1,8 @@
+{
+  "id": "loginqueue2vc",
+  "name": "LoginQueue2VC",
+  "version": "${project.version}",
+  "description": "LoginQueue2 的 Velocity 代理端配套插件",
+  "authors": ["MCOCET"],
+  "main": "top.mcocet.loginqueue2vc.LoginQueue2VC"
+}

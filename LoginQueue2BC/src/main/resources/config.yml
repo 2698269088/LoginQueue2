@@ -1,0 +1,50 @@
+# 是否开启调试模式
+debug: false
+
+# 是否限制未登录玩家使用 /server 命令
+# 启用后，只有收到登录成功消息的玩家才能使用 /server 命令
+# 玩家退出服务器后状态重置
+restrict-server-command: false
+
+# 是否限制登录服玩家使用 /server 命令
+# 启用后，当玩家在以下配置的登录服中时，无法使用 /server 命令切换服务器
+# 此功能与 restrict-server-command 独立，可同时启用
+restrict-login-server-command: false
+
+# 登录服列表（在代理端中配置的服务器名称）
+# 玩家处于这些服务器中时，将被禁止执行 /server 命令
+login-servers:
+  - "login"
+
+# 是否启用IP限制功能
+# 启用后，将限制同IP最大在线玩家数和同IP最大注册玩家数
+# 并记录玩家的初始登录IP和最后一次登录IP到SQLite数据库
+enable-ip-limit: true
+
+# 同IP最大可在线玩家数（0表示不限制）
+max-online-per-ip: 3
+
+# 同IP最大可注册玩家数（0表示不限制）
+max-register-per-ip: 5
+
+# 是否启用IP白名单+认证功能
+# 启用后，指定玩家（见下方 whitelist-players）必须使用白名单中的IP登录
+# 若IP不在白名单中，则需要输入认证密钥才允许登录
+enable-ip-auth: false
+
+# 认证密钥（明文存储）
+auth-key: "your-secret-key-here"
+
+# 认证密钥最大可错误次数（超过后封禁该IP）
+max-auth-failures: 3
+
+# IP封禁时长（毫秒，默认24小时）
+ip-ban-duration: 86400000
+
+# 认证失败次数重置时长（毫秒，默认1小时）
+auth-failure-reset-duration: 3600000
+
+# 需要IP白名单+认证的玩家列表（玩家名）
+whitelist-players:
+#  - "PlayerName1"
+#  - "PlayerName2"

@@ -1,0 +1,42 @@
+# 当前子服务器在代理端中的名称
+server-name: "main"
+
+# 向代理端广播服务器信息的周期（秒）
+refresh-interval: 5
+
+# UDP 服务器信息同步配置
+udp-sync:
+  # 是否启用 UDP 服务器信息响应
+  enabled: false
+  # UDP 监听端口
+  port: 16647
+  # SHA256 通信密钥（留空则随机生成，请设置与主插件配置相同的密钥）
+  secret-key: ""
+  # 计划好的预共享密钥（用于加密传输通信密钥，防止窃听）
+  # 此密钥只能手动配置，不会通过网络传输，建议两端配置相同
+  # 建议修改为非预设密钥
+  planned-key: "loginqueue2"
+  # 主插件 UDP 连接配置（用于 /connect 虚拟排队）
+  # 启用后，玩家使用 /connect 会先把请求发给主插件排队
+  main-plugin:
+    # 是否启用 /connect 虚拟排队功能
+    enabled: false
+    # 主插件（LQ2/LQ2Limbo）UDP 服务端地址
+    host: "127.0.0.1"
+    # 主插件 UDP 服务端端口
+    port: 16648
+    # 通信密钥，需要与主插件 udp-sync.servers 中本服务器的 secret-key 一致
+    secret-key: ""
+    # 请求超时时间（毫秒）
+    timeout: 3000
+
+  # 服务器列表（用于 /connect 指令 Tab 补全）
+  # 仅在未通过 UDP 同步到主插件服务器列表时生效（同步后支持 display-name 补全与服务器校验）
+  server-list:
+    - "lobby"
+    - "main"
+    - "minigames"
+
+messages:
+  # 虚拟排队状态提示
+  virtual-queue-status: "&a[队列] &f当前排在第 &e{position} &f位，目标服在线 &e{online}&f/&e{max}&f。"
