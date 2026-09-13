@@ -1,5 +1,6 @@
 # 构建产物
 target/
+dist/
 *.class
 *.jar
 !LoginQueue2/libs/*.jar
