@@ -11,6 +11,7 @@ import top.mcocet.loginqueue2.LoginQueue2;
 import top.mcocet.loginqueue2.auth.AuthDataMigrator;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2.listener.PlayerJoinListener;
+import top.mcocet.loginqueue2.match.MinigameMatchManager;
 import top.mcocet.loginqueue2.util.LanguageManager;
 import top.mcocet.loginqueue2.world.LoginWorldManager;
 
@@ -51,6 +52,12 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
                 return handleList(sender);
             case "status":
                 return handleStatus(sender);
+            case "matches":
+                return handleMatches(sender);
+            case "matchstart":
+                return handleMatchControl(sender, args, true);
+            case "matchend":
+                return handleMatchControl(sender, args, false);
             case "refresh":
                 return handleRefresh(sender);
             case "reload":
@@ -169,6 +176,29 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        // MINIGAME 模式下显示对局排队状态
+        if (plugin.isMinigameMode()) {
+            MinigameMatchManager matchManager = plugin.getMinigameMatchManager();
+            sender.sendMessage(languageManager.getMessage("status-header"));
+            if (matchManager == null) {
+                sender.sendMessage(languageManager.getMessage("minigame-match-list-empty"));
+            } else {
+                sender.sendMessage(languageManager.getMessage("minigame-status-server", "server", matchManager.getDefaultTargetServer()));
+                sender.sendMessage(languageManager.getMessage("minigame-status-total",
+                        "total", String.valueOf(matchManager.getTotalMatchCount()),
+                        "running", String.valueOf(matchManager.getRunningMatchCount())));
+                sender.sendMessage(languageManager.getMessage("minigame-status-joinable", "count", String.valueOf(matchManager.getJoinableCount())));
+                sender.sendMessage(languageManager.getMessage("minigame-status-release-mode", "mode", matchManager.getReleaseMode()));
+                sender.sendMessage(languageManager.getMessage("minigame-status-join-mode", "mode", matchManager.getJoinMode()));
+                if (matchManager.isSequentialJoin()) {
+                    sender.sendMessage(languageManager.getMessage("minigame-status-join-interval", "interval", String.valueOf(matchManager.getJoinInterval())));
+                }
+            }
+            sender.sendMessage(languageManager.getMessage("status-queue-size", "size", String.valueOf(listener.getQueueSize())));
+            sender.sendMessage(languageManager.getMessage("status-footer"));
+            return true;
+        }
+
         double threshold = plugin.getConfig().getDouble("queue.threshold", 0.8);
         String balanceStrategy = plugin.getConfig().getString("queue.balance-strategy", "LEAST_PLAYERS");
 
@@ -236,6 +266,86 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
             sender.sendMessage(languageManager.getMessage("status-queue-size", "size", String.valueOf(listener.getQueueSize())));
         }
         sender.sendMessage(languageManager.getMessage("status-footer"));
+        return true;
+    }
+
+    /**
+     * 显示小游戏对局列表（MINIGAME 模式）
+     */
+    private boolean handleMatches(CommandSender sender) {
+        if (!sender.hasPermission("loginqueue2.admin.status")) {
+            sender.sendMessage(languageManager.getMessage("no-permission"));
+            return true;
+        }
+
+        if (!plugin.isMinigameMode()) {
+            sender.sendMessage(languageManager.getMessage("minigame-not-mode"));
+            return true;
+        }
+
+        MinigameMatchManager matchManager = plugin.getMinigameMatchManager();
+        sender.sendMessage(languageManager.getMessage("minigame-match-list-header"));
+        if (matchManager == null) {
+            sender.sendMessage(languageManager.getMessage("minigame-match-list-empty"));
+            sender.sendMessage(languageManager.getMessage("minigame-match-list-footer"));
+            return true;
+        }
+
+        List<MinigameMatchManager.MatchInfo> matches = matchManager.snapshotMatches();
+        if (matches.isEmpty()) {
+            sender.sendMessage(languageManager.getMessage("minigame-match-list-empty"));
+        } else {
+            for (MinigameMatchManager.MatchInfo match : matches) {
+                String stateKey = match.isWaiting() ? "minigame-state-waiting"
+                        : ("ENDED".equalsIgnoreCase(match.getState()) ? "minigame-state-ended" : "minigame-state-running");
+                sender.sendMessage(languageManager.getMessage("minigame-match-list-entry",
+                        "server", match.getServerName(),
+                        "match", match.getMatchId(),
+                        "state", languageManager.getMessage(stateKey),
+                        "players", String.valueOf(matchManager.effectivePlayers(match)),
+                        "min", String.valueOf(match.getMinPlayers()),
+                        "max", String.valueOf(match.getMaxPlayers()),
+                        "age", String.valueOf(match.getAgeSeconds())));
+            }
+        }
+        sender.sendMessage(languageManager.getMessage("minigame-match-list-footer"));
+        return true;
+    }
+
+    /**
+     * 通知子服开始/结束指定对局（MINIGAME 模式）
+     */
+    private boolean handleMatchControl(CommandSender sender, String[] args, boolean start) {
+        if (!sender.hasPermission("loginqueue2.admin.status")) {
+            sender.sendMessage(languageManager.getMessage("no-permission"));
+            return true;
+        }
+
+        if (!plugin.isMinigameMode()) {
+            sender.sendMessage(languageManager.getMessage("minigame-not-mode"));
+            return true;
+        }
+
+        if (args.length < 3) {
+            sender.sendMessage(languageManager.getMessage(start ? "minigame-match-start-usage" : "minigame-match-end-usage"));
+            return true;
+        }
+
+        MinigameMatchManager matchManager = plugin.getMinigameMatchManager();
+        if (matchManager == null) {
+            sender.sendMessage(languageManager.getMessage("minigame-match-list-empty"));
+            return true;
+        }
+
+        String serverName = args[1];
+        String matchId = args[2];
+        if (start) {
+            matchManager.sendMatchStart(serverName, matchId, "MANUAL");
+            sender.sendMessage(languageManager.getMessage("minigame-match-start-sent", "server", serverName, "match", matchId));
+        } else {
+            matchManager.sendMatchEnd(serverName, matchId, "MANUAL");
+            sender.sendMessage(languageManager.getMessage("minigame-match-end-sent", "server", serverName, "match", matchId));
+        }
         return true;
     }
 
@@ -465,6 +575,9 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
         sender.sendMessage(languageManager.getMessage("help-pause"));
         sender.sendMessage(languageManager.getMessage("help-resume"));
         sender.sendMessage(languageManager.getMessage("help-info"));
+        sender.sendMessage(languageManager.getMessage("help-matches"));
+        sender.sendMessage(languageManager.getMessage("help-matchstart"));
+        sender.sendMessage(languageManager.getMessage("help-matchend"));
         sender.sendMessage(ChatColor.YELLOW + "/logseq migrate <from> <to>" + ChatColor.WHITE + " - 迁移玩家数据 (authme/mysql/sqlite/builtin)");
         sender.sendMessage(languageManager.getMessage("help-help"));
         sender.sendMessage(languageManager.getMessage("help-footer"));
@@ -473,7 +586,7 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "refresh", "reload", "pause", "resume", "info", "migrate", "help");
+            List<String> subs = Arrays.asList("skip", "promote", "debug", "list", "status", "matches", "matchstart", "matchend", "refresh", "reload", "pause", "resume", "info", "migrate", "help");
             List<String> result = new ArrayList<>();
             for (String sub : subs) {
                 if (sub.startsWith(args[0].toLowerCase())) {
@@ -513,6 +626,26 @@ public class LoginQueue2Command implements CommandExecutor, TabCompleter {
                     }
                 }
                 return names;
+            }
+        }
+        if ((args.length == 2 || args.length == 3)
+                && ("matchstart".equalsIgnoreCase(args[0]) || "matchend".equalsIgnoreCase(args[0]))
+                && sender.hasPermission("loginqueue2.admin.status")) {
+            MinigameMatchManager matchManager = plugin.getMinigameMatchManager();
+            if (matchManager != null) {
+                List<String> result = new ArrayList<>();
+                for (MinigameMatchManager.MatchInfo match : matchManager.snapshotMatches()) {
+                    if (args.length == 2) {
+                        String serverName = match.getServerName();
+                        if (serverName.toLowerCase().startsWith(args[1].toLowerCase()) && !result.contains(serverName)) {
+                            result.add(serverName);
+                        }
+                    } else if (match.getServerName().equalsIgnoreCase(args[1])
+                            && match.getMatchId().toLowerCase().startsWith(args[2].toLowerCase())) {
+                        result.add(match.getMatchId());
+                    }
+                }
+                return result;
             }
         }
         return Collections.emptyList();

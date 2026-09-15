@@ -46,6 +46,13 @@ public class JoinCommand implements CommandExecutor {
             return true;
         }
 
+        // MINIGAME 模式下直接入队，由对局上报驱动放行，不使用服务器选择菜单
+        if (plugin.isMinigameMode()) {
+            listener.addPlayerToQueue(player);
+            player.sendMessage(languageManager.getMessage("joined-queue"));
+            return true;
+        }
+
         // 如果启用了 UDP 服务器选择菜单，打开菜单让玩家选择目标服务器
         if (ServerSelectorMenu.isEnabled(plugin)) {
             // AuthMe 兼容模式下，未登录玩家不能打开菜单

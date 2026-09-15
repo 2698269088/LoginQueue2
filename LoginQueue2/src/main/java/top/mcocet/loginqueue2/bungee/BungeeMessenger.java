@@ -31,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class BungeeMessenger implements PluginMessageListener {
 
     /** 协议版本号：用于跨插件通信版本兼容性检查 */
-    public static final String PROTOCOL_VERSION = "1.6.1";
+    public static final String PROTOCOL_VERSION = "1.7.0";
 
     /** 自定义消息通道：用于通知代理端将指定玩家转移到目标服务器 */
     public static final String CHANNEL_CONNECT_OTHER = "loginqueue2:connectother";

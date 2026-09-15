@@ -11,7 +11,9 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -33,6 +35,10 @@ public class UDPServer {
     private static final String TYPE_QUEUE_STATUS = "QUEUE_STATUS";
     private static final String TYPE_CONNECT_ALLOW = "CONN_ALLOW";
     private static final String TYPE_SERVER_LIST = "SERVER_LIST";
+    private static final String TYPE_MATCH_JOIN = "MATCH_JOIN";
+    private static final String TYPE_MATCH_START = "MATCH_START";
+    private static final String TYPE_MATCH_END = "MATCH_END";
+    private static final String TYPE_MATCH_QUEUE_INFO = "MATCH_QUEUE_INFO";
     private static final String SEPARATOR = "|";
 
     private final JavaPlugin plugin;
@@ -160,6 +166,18 @@ public class UDPServer {
                 break;
             case TYPE_SERVER_LIST:
                 handleServerList(payload);
+                break;
+            case TYPE_MATCH_JOIN:
+                handleMatchJoin(payload);
+                break;
+            case TYPE_MATCH_START:
+                handleMatchStart(payload);
+                break;
+            case TYPE_MATCH_END:
+                handleMatchEnd(payload);
+                break;
+            case TYPE_MATCH_QUEUE_INFO:
+                handleMatchQueueInfo(payload);
                 break;
             default:
                 plugin.getLogger().warning("UDP 收到未知消息类型: " + type);
@@ -350,6 +368,159 @@ public class UDPServer {
             return Integer.parseInt(value);
         } catch (NumberFormatException e) {
             return 0;
+        }
+    }
+
+    /**
+     * 处理主插件发送的对局放行通知
+     * 格式: MATCH_JOIN|serverName|encryptedPayload
+     * payload: uuid|matchId
+     */
+    private void handleMatchJoin(String payload) {
+        int sepIndex = payload.indexOf(SEPARATOR);
+        if (sepIndex < 0) {
+            return;
+        }
+        String encryptedPayload = payload.substring(sepIndex + 1);
+        if (secretKey == null) {
+            plugin.getLogger().warning("UDP 收到对局放行通知但无密钥，无法解密。");
+            return;
+        }
+        String decrypted;
+        try {
+            decrypted = CryptoUtil.decryptWithStringKey(encryptedPayload, secretKey);
+        } catch (Exception e) {
+            plugin.getLogger().warning("UDP 对局放行通知解密失败: " + e.getMessage());
+            return;
+        }
+
+        String[] parts = decrypted.split("\\|", 2);
+        if (parts.length < 2) {
+            return;
+        }
+        UUID uuid;
+        try {
+            uuid = UUID.fromString(parts[0]);
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        String matchId = parts[1];
+
+        if (plugin instanceof LoginQueue2Online) {
+            ((LoginQueue2Online) plugin).handleMatchJoin(uuid, matchId);
+        }
+    }
+
+    /**
+     * 处理主插件发送的开始游戏通知
+     * 格式: MATCH_START|serverName|encryptedPayload
+     * payload: matchId|reason
+     */
+    private void handleMatchStart(String payload) {
+        int sepIndex = payload.indexOf(SEPARATOR);
+        if (sepIndex < 0) {
+            return;
+        }
+        String encryptedPayload = payload.substring(sepIndex + 1);
+        if (secretKey == null) {
+            plugin.getLogger().warning("UDP 收到开始游戏通知但无密钥，无法解密。");
+            return;
+        }
+        String decrypted;
+        try {
+            decrypted = CryptoUtil.decryptWithStringKey(encryptedPayload, secretKey);
+        } catch (Exception e) {
+            plugin.getLogger().warning("UDP 开始游戏通知解密失败: " + e.getMessage());
+            return;
+        }
+
+        String[] parts = decrypted.split("\\|", 2);
+        if (parts.length < 1 || parts[0].isEmpty()) {
+            return;
+        }
+        String matchId = parts[0];
+        String reason = parts.length >= 2 ? parts[1] : "TIMEOUT";
+
+        if (plugin instanceof LoginQueue2Online) {
+            ((LoginQueue2Online) plugin).handleMatchStart(matchId, reason);
+        }
+    }
+
+    /**
+     * 处理主插件发送的结束游戏通知
+     * 格式: MATCH_END|serverName|encryptedPayload
+     * payload: matchId|reason
+     */
+    private void handleMatchEnd(String payload) {
+        int sepIndex = payload.indexOf(SEPARATOR);
+        if (sepIndex < 0) {
+            return;
+        }
+        String encryptedPayload = payload.substring(sepIndex + 1);
+        if (secretKey == null) {
+            plugin.getLogger().warning("UDP 收到结束游戏通知但无密钥，无法解密。");
+            return;
+        }
+        String decrypted;
+        try {
+            decrypted = CryptoUtil.decryptWithStringKey(encryptedPayload, secretKey);
+        } catch (Exception e) {
+            plugin.getLogger().warning("UDP 结束游戏通知解密失败: " + e.getMessage());
+            return;
+        }
+
+        String[] parts = decrypted.split("\\|", 2);
+        if (parts.length < 1 || parts[0].isEmpty()) {
+            return;
+        }
+        String matchId = parts[0];
+        String reason = parts.length >= 2 ? parts[1] : "MANUAL";
+
+        if (plugin instanceof LoginQueue2Online) {
+            ((LoginQueue2Online) plugin).handleMatchEnd(matchId, reason);
+        }
+    }
+
+    /**
+     * 处理主插件推送的排队队列信息
+     * 格式: MATCH_QUEUE_INFO|serverName|encryptedPayload
+     * payload: queueSize|uuid1,uuid2,...（玩家列表最多 100 个，可能为空）
+     */
+    private void handleMatchQueueInfo(String payload) {
+        int sepIndex = payload.indexOf(SEPARATOR);
+        if (sepIndex < 0) {
+            return;
+        }
+        String encryptedPayload = payload.substring(sepIndex + 1);
+        if (secretKey == null) {
+            plugin.getLogger().warning("UDP 收到队列信息但无密钥，无法解密。");
+            return;
+        }
+        String decrypted;
+        try {
+            decrypted = CryptoUtil.decryptWithStringKey(encryptedPayload, secretKey);
+        } catch (Exception e) {
+            plugin.getLogger().warning("UDP 队列信息解密失败: " + e.getMessage());
+            return;
+        }
+
+        String[] parts = decrypted.split("\\|", 2);
+        if (parts.length < 1 || parts[0].isEmpty()) {
+            return;
+        }
+        int queueSize = parseInt(parts[0]);
+        List<UUID> players = new ArrayList<>();
+        if (parts.length >= 2 && !parts[1].isEmpty()) {
+            for (String raw : parts[1].split(",")) {
+                try {
+                    players.add(UUID.fromString(raw.trim()));
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }
+
+        if (plugin instanceof LoginQueue2Online) {
+            ((LoginQueue2Online) plugin).handleMatchQueueInfo(queueSize, players);
         }
     }
 

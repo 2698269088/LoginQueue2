@@ -11,9 +11,10 @@ A next-generation Minecraft login queue solution, providing high-performance pla
 - **Multi-Platform Support**: The main plugin is compatible with Spigot, Paper, and Folia; companion plugins cover Limbo, BungeeCord, and Velocity platforms
 - **Login Queue Management**: Controls the order in which players enter main servers, with priority sorting based on permissions, names, UUIDs, regex patterns, and permission groups
 - **Load Balancing**: Automatically selects the optimal server in multi-main server environments (Least Players / Least Load / Round Robin / Random)
-- **Dual Work Modes**:
+- **Three Work Modes**:
   - **PROXY Mode**: Traditional network server architecture, redirects through a proxy
   - **WORLD Mode**: Creates an independent login world within a single server, no proxy required
+  - **MINIGAME Mode**: Minigame matchmaking queue; the login server queues players and releases them across servers based on match slots, auto-transferring them to the minigame server
 - **Player Restrictions**: Restricts movement, interaction, and block breaking for queued players, with optional activity range limits
 - **Dimension & Spawn Protection**: Prevents entry into Nether/End, disables portals, and protects the spawn area
 - **Performance-Saving Mode**: Disables mob spawning, time flow, and weather changes
@@ -192,6 +193,47 @@ queue:
 - The login world and main world are completely isolated
 - Supports all queue management and player restriction features
 
+### Minigame Match Mode (MINIGAME)
+
+Since **version 1.7.0**, a third work mode has been added, designed for minigame networks:
+
+```yaml
+work-mode: MINIGAME
+```
+
+**Architecture & Workflow**:
+
+1. The minigame server installs `LoginQueue2Online` with `match.enabled` and creates matches via `/lq2match create`
+2. The subserver periodically reports match state to the login server (match ID, state, players, min/max players)
+3. The login server releases queued players to matches with free slots according to the release mode, and notifies the subserver of the assignment
+4. Players are automatically transferred to the minigame server through the proxy and counted into the match once connected
+5. The match starts when full (or after a timeout fallback); after it ends, the next round can begin
+
+**Release Modes (`minigame.release-mode`)**:
+
+| Mode | Description |
+|------|-------------|
+| `GATHER_FIRST` | Gather first: prioritizes releasing full batches to matches that can meet the minimum player count; falls back to filling free slots when a full lobby is not possible (recommended) |
+| `GATHER_ONLY` | Gather only: releases players only when the queue can fully fill a match's minimum player count |
+| `FILL_ONLY` | Fill only: releases players in queue order whenever a match has free slots |
+
+**Join Modes (`minigame.join-mode`)**:
+
+| Mode | Description |
+|------|-------------|
+| `BATCH` | Batch join: releases multiple players consecutively when gathering or filling, entering the server together |
+| `SEQUENTIAL` | Sequential join: releases only one player at a time with a `join-interval` second gap, entering the server smoothly |
+
+**Match Start/End Control**:
+
+- **Match states**: `WAITING` (can receive releases) → `RUNNING` (in progress, no more releases) → `ENDED` (finished; can be reset and restarted)
+- **Subserver control**: `/lq2match start <ID>`, `/lq2match end <ID>`, `/lq2match state <ID> <state>`
+- **Login server remote control**: `/logseq matchstart <server> <matchId>`, `/logseq matchend <server> <matchId>`
+- **Gather timeout**: if a match does not fill within `gather-timeout` seconds, it stops waiting and automatically notifies the subserver to start when players are already inside
+- **Console commands**: the subserver can run commands with **console permission** when a match starts or ends (`match.commands.on-start` / `on-end`), supporting `{match}`, `{players}`, `{min}`, `{max}`, and `{reason}` placeholders
+
+**Developer API**: `LoginQueue2Online` provides `MinigameAPI` on the subserver, allowing co-located minigame plugins to query waiting/connected players, query the login server queue, request releases for specific players, start/end matches, and more (see the subserver feature details below).
+
 ---
 
 ## Configuration
@@ -204,7 +246,7 @@ Edit `plugins/LoginQueue2/config.yml`:
 # Plugin language (supports zh_CN, zh_TW, en_US)
 language: en_US
 
-# Work mode: PROXY (proxy redirect) or WORLD (login world within single server)
+# Work mode: PROXY (proxy redirect), WORLD (login world within single server) or MINIGAME (minigame matchmaking)
 work-mode: PROXY
 
 # Enable BungeeCord channel extension (for cross-server transfers, invalid in WORLD mode)
@@ -346,6 +388,25 @@ scoreboard:
     - "main"
     - "main1"
     - "main2"
+
+# Minigame matchmaking configuration (only effective when work-mode: MINIGAME)
+minigame:
+  # Target minigame server name for releasing players
+  target-server: "minigames"
+  # Release mode: GATHER_FIRST / GATHER_ONLY / FILL_ONLY
+  release-mode: GATHER_FIRST
+  # Join mode: BATCH (batch join) / SEQUENTIAL (sequential join)
+  join-mode: BATCH
+  # Minimum interval between releases in SEQUENTIAL mode (seconds)
+  join-interval: 2
+  # Gather wait timeout (seconds); 0 disables timeout notification
+  gather-timeout: 120
+  # Match report timeout (seconds); clears match records when reports stop
+  report-timeout: 15
+  # Pending release grace period (milliseconds) to prevent over-releasing
+  pending-grace: 10000
+  # Match processing interval (seconds)
+  process-interval: 1
 ```
 
 ### LoginQueue2Online (Subserver)
@@ -388,6 +449,19 @@ server-list:
   - "main"
   - "minigames"
 
+# Minigame match configuration (enabled in MINIGAME mode; reports match state to the login server)
+match:
+  enabled: false
+  # Match state report interval (seconds)
+  report-interval: 3
+  # Timeout for released players to connect (seconds); stale assignments are removed
+  assign-timeout: 30
+  # Commands executed with console permission when a match starts/ends
+  # Placeholders: {match} match ID, {players} current players, {min} min players, {max} max players, {reason} trigger reason
+  commands:
+    on-start: []
+    on-end: []
+
 messages:
   # Virtual queue status hint
   virtual-queue-status: "&a[Queue] &fYou are position &e{position}&f, target server online &e{online}&f/&e{max}&f."
@@ -408,6 +482,9 @@ messages:
 | `/logseq reload` | `loginqueue2.admin.reload` | Reload configuration and language files |
 | `/logseq debug` | `loginqueue2.admin.debug` | Toggle debug mode (output detailed logs) |
 | `/logseq info` | `loginqueue2.admin.info` | View detailed info of all main servers |
+| `/logseq matches` | `loginqueue2.admin.status` | View minigame match list (MINIGAME mode) |
+| `/logseq matchstart <server> <matchId>` | `loginqueue2.admin.status` | Notify the minigame server to start a match (MINIGAME mode) |
+| `/logseq matchend <server> <matchId>` | `loginqueue2.admin.status` | Notify the minigame server to end a match (MINIGAME mode) |
 | `/logseq help` | - | Show help information |
 | `/join` | - | Manually join the queue (used when auto-queue is disabled) |
 | `/register <password> <confirm>` | - | Register account (when built-in auth is enabled) |
@@ -446,8 +523,11 @@ Commands are identical to the main plugin. Supports `/logseq`, `/ls`, and `/lq` 
 |---------|------------|-------------|
 | `/connect <server> [player]` | `loginqueue2online.connect` | Join the target server queue; when virtual queue is enabled, queues via UDP to the main plugin |
 | `/connect <server> <player>` | `loginqueue2online.connect.others` | Add another player to the target server queue |
+| `/lq2match <subcommand>` | `loginqueue2online.match` | Minigame match management (MINIGAME mode), see subcommands below |
 
-> Apart from `/connect`, this plugin has no other commands. After startup it automatically reports server status to the login server via UDP.
+**`/lq2match` subcommands** (available when work mode is MINIGAME): `list`, `create <min> [max]`, `remove <ID>`, `state <ID> <WAITING|RUNNING|ENDED>`, `players <ID> [count|auto]`, `start <ID>`, `end <ID>`
+
+> By default this plugin only provides `/connect`; in MINIGAME mode it additionally provides `/lq2match` for match management. After startup it automatically reports server status to the login server via UDP.
 
 ---
 
@@ -474,6 +554,7 @@ Commands are identical to the main plugin. Supports `/logseq`, `/ls`, and `/lq` 
 |------------|-------------|
 | `loginqueue2online.connect` | Allow using `/connect` to join the target server queue |
 | `loginqueue2online.connect.others` | Allow using `/connect` for other players |
+| `loginqueue2online.match` | Allow using `/lq2match` to manage minigame matches |
 
 ---
 
@@ -496,6 +577,7 @@ Commands are identical to the main plugin. Supports `/logseq`, `/ls`, and `/lq` 
 - **Dual-Mode Support**: Supports both BungeeCord native channels and custom channels for player transfers
 - **Authentication System**: Built-in optional register/login/password change functionality, with AuthMe compatibility mode
 - **WORLD Mode**: Creates a login world within a single server, no proxy required
+- **MINIGAME Mode**: Minigame matchmaking queue; releases players across servers based on match slots, with match state management and start/end control
 
 **Load Balancing Strategies**:
 - `LEAST_PLAYERS`: Select server with fewest online players
@@ -530,8 +612,15 @@ Commands are identical to the main plugin. Supports `/logseq`, `/ls`, and `/lq` 
 - AES encrypted communication with pre-shared key support
 - Automatically broadcast status to the login server at regular intervals
 - **/connect Cross-Server Virtual Queue**: Players on subservers can send virtual queue requests to the main plugin via `/connect <target-server>`; when allowed, the login server notifies the subserver to transfer the player automatically
+- **Minigame Match Management (MINIGAME mode)**: When `match.enabled` is on, create and manage matches via `/lq2match` or `MinigameAPI`, report match state to the login server, receive release/start/end notifications, and run custom console commands on match start/end (`match.commands`)
 
-**Characteristics**: No commands other than `/connect`, runs automatically after configuration
+**Developer API (`MinigameAPI`)**: Co-located minigame plugins can obtain the instance via `MinigameAPI.get()`. Capabilities include:
+- Match management: create/remove/start/end matches, set state and player counts
+- Match queries: waiting/connected players inside a match, a player's current match
+- Queue queries: login server queue size and player list (cache-synced)
+- Release requests: ask the login server to release specific queued players into a match
+
+**Characteristics**: Provides only `/connect` by default; additionally provides `/lq2match` in MINIGAME mode; runs automatically after configuration
 
 > **Why is it needed?** The main plugin can obtain subserver online counts through BungeeCord native channels, but **cannot obtain remote server TPS**. `LoginQueue2Online` reports TPS and other detailed status to the login server via UDP, enabling the `LEAST_LOAD` balancing strategy to work properly. If you only use `LEAST_PLAYERS` or `ROUND_ROBIN` strategies and don't need TPS monitoring, this plugin can theoretically be omitted.
 
@@ -572,6 +661,7 @@ Commands are identical to the main plugin. Supports `/logseq`, `/ls`, and `/lq` 
 | `loginqueue2:serverinfo` | Query / report server status information | BC priority mode (requires BC/VC plugin) |
 | `loginqueue2:loginsuccess` | Login success notification channel | Authentication system related |
 | `UDP` | Direct UDP communication for server status | UDP priority mode (requires Online plugin) |
+| `UDP (Minigame)` | Match reports, cross-server releases, start/end notices, queue queries (`MATCH_REPORT`, `MATCH_JOIN`, `MATCH_START`, `MATCH_END`, `MATCH_QUEUE_QUERY`, etc.) | MINIGAME mode (requires Online plugin) |
 
 ---
 

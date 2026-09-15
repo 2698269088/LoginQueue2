@@ -12,6 +12,7 @@ import top.mcocet.loginqueue2.command.JoinCommand;
 import top.mcocet.loginqueue2.command.LoginQueue2Command;
 import top.mcocet.loginqueue2.gui.ServerSelectorMenu;
 import top.mcocet.loginqueue2.listener.DimensionListener;
+import top.mcocet.loginqueue2.match.MinigameMatchManager;
 import top.mcocet.loginqueue2.util.LanguageManager;
 import top.mcocet.loginqueue2.listener.PerformanceListener;
 import top.mcocet.loginqueue2.listener.PlayerJoinListener;
@@ -39,6 +40,7 @@ public final class LoginQueue2 extends JavaPlugin {
     private WorldInventoryListener worldInventoryListener;
     private ServerSelectorMenu serverSelectorMenu;
     private UDPServer udpServer;
+    private MinigameMatchManager minigameMatchManager;
     private boolean debug;
 
     @Override
@@ -50,8 +52,11 @@ public final class LoginQueue2 extends JavaPlugin {
 
         // 检测工作模式
         boolean worldMode = "WORLD".equalsIgnoreCase(getConfig().getString("work-mode", "PROXY"));
+        boolean minigameMode = "MINIGAME".equalsIgnoreCase(getConfig().getString("work-mode", "PROXY"));
 
-        if (worldMode) {
+        if (minigameMode) {
+            getLogger().info(languageManager.getLogMessage("minigame-mode-enabled"));
+        } else if (worldMode) {
             getLogger().info(languageManager.getLogMessage("world-mode-enabled"));
         } else {
             getLogger().info(languageManager.getLogMessage("proxy-mode-enabled"));
@@ -77,6 +82,12 @@ public final class LoginQueue2 extends JavaPlugin {
         this.playerJoinListener = new PlayerJoinListener(this, messenger, authManager, authRestrictionListener, authMeCompatManager);
         getServer().getPluginManager().registerEvents(playerJoinListener, this);
 
+        // 初始化小游戏对局管理器（MINIGAME 模式）
+        if (minigameMode) {
+            this.minigameMatchManager = new MinigameMatchManager(this);
+            startMinigameTask();
+        }
+
         // WORLD 模式下禁用计分板（不需要显示 BungeeCord 服务器状态）
         if (!worldMode && getConfig().getBoolean("scoreboard.enabled", true)) {
             this.scoreboardManager = new ServerScoreboardManager(this, messenger);
@@ -92,10 +103,10 @@ public final class LoginQueue2 extends JavaPlugin {
         this.serverSelectorMenu = new ServerSelectorMenu(this);
         getServer().getPluginManager().registerEvents(serverSelectorMenu, this);
 
-        // 启动 UDP 服务端，接收子服务器的 /connect 虚拟排队请求
+        // 启动 UDP 服务端，接收子服务器的 /connect 虚拟排队请求或对局上报（小游戏模式）
         boolean udpEnabled = getConfig().getBoolean("udp-sync.enabled", false);
         boolean connectQueueEnabled = getConfig().getBoolean("udp-sync.connect-queue.enabled", false);
-        if (udpEnabled && connectQueueEnabled) {
+        if (udpEnabled && (connectQueueEnabled || minigameMode)) {
             int serverPort = getConfig().getInt("udp-sync.connect-queue.server-port", 16648);
             this.udpServer = new UDPServer(this, messenger, playerJoinListener, serverPort);
             this.udpServer.start();
@@ -203,6 +214,24 @@ public final class LoginQueue2 extends JavaPlugin {
     }
 
     /**
+     * MINIGAME 模式下启动对局清理与队列处理任务
+     */
+    private void startMinigameTask() {
+        long interval = Math.max(1L, getConfig().getLong("minigame.process-interval", 1)) * 20L;
+        SchedulerUtil.runTaskTimer(this, () -> {
+            if (minigameMatchManager != null) {
+                minigameMatchManager.cleanup();
+                minigameMatchManager.checkTimeouts();
+            }
+            if (playerJoinListener != null) {
+                playerJoinListener.processQueueNow();
+            }
+        }, interval, interval);
+        getLogger().info(languageManager.getLogMessage("minigame-task-started",
+                "interval", String.valueOf(interval / 20L)));
+    }
+
+    /**
      * WORLD 模式下启动主世界未授权玩家监控任务
      */
     private void startMainWorldMonitorTask() {
@@ -235,6 +264,12 @@ public final class LoginQueue2 extends JavaPlugin {
         getLogger().info(languageManager.getLogMessage("config-spawn-protection", "enabled", String.valueOf(getConfig().getBoolean("queue.spawn-protection", true)), "radius", String.valueOf(getConfig().getDouble("queue.spawn-protection-radius", 0.0))));
         getLogger().info(languageManager.getLogMessage("config-spawn-world", "world", getConfig().getString("queue.spawn.world", "world"), "x", String.valueOf(getConfig().getDouble("queue.spawn.x", 0.0)), "y", String.valueOf(getConfig().getDouble("queue.spawn.y", 64.0)), "z", String.valueOf(getConfig().getDouble("queue.spawn.z", 0.0))));
         getLogger().info(languageManager.getLogMessage("config-bungee-extension", "enabled", String.valueOf(getConfig().getBoolean("enable-bungee-extension", true))));
+        if (isMinigameMode()) {
+            getLogger().info(languageManager.getLogMessage("minigame-configured",
+                    "server", getConfig().getString("minigame.target-server", "minigames"),
+                    "mode", getConfig().getString("minigame.release-mode", "GATHER_FIRST"),
+                    "timeout", String.valueOf(getConfig().getInt("minigame.gather-timeout", 120))));
+        }
         logServerStatus();
     }
 
@@ -356,6 +391,17 @@ public final class LoginQueue2 extends JavaPlugin {
 
     public LoginWorldManager getLoginWorldManager() {
         return loginWorldManager;
+    }
+
+    public MinigameMatchManager getMinigameMatchManager() {
+        return minigameMatchManager;
+    }
+
+    /**
+     * 判断当前是否为小游戏对局排队模式
+     */
+    public boolean isMinigameMode() {
+        return "MINIGAME".equalsIgnoreCase(getConfig().getString("work-mode", "PROXY"));
     }
 
     public QueueItemListener getQueueItemListener() {

@@ -4,6 +4,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import top.mcocet.loginqueue2.LoginQueue2;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
 import top.mcocet.loginqueue2.listener.PlayerJoinListener;
+import top.mcocet.loginqueue2.match.MinigameMatchManager;
 import top.mcocet.loginqueue2.util.CryptoUtil;
 import top.mcocet.loginqueue2.util.LanguageManager;
 import top.mcocet.loginqueue2.util.SchedulerUtil;
@@ -34,6 +35,10 @@ public class UDPServer implements PlayerJoinListener.VirtualQueueHandler {
     private static final String TYPE_CONNECT_ALLOW = "CONN_ALLOW";
     private static final String TYPE_CONNECT_CANCEL = "CONN_CANCEL";
     private static final String TYPE_SERVER_LIST = "SERVER_LIST";
+    private static final String TYPE_MATCH_REPORT = "MATCH_REPORT";
+    private static final String TYPE_MATCH_QUEUE_QUERY = "MATCH_QUEUE_QUERY";
+    private static final String TYPE_MATCH_QUEUE_INFO = "MATCH_QUEUE_INFO";
+    private static final String TYPE_MATCH_RELEASE_REQ = "MATCH_RELEASE_REQ";
     private static final String SEPARATOR = "|";
 
     private final LoginQueue2 plugin;
@@ -147,6 +152,15 @@ public class UDPServer implements PlayerJoinListener.VirtualQueueHandler {
                 break;
             case TYPE_CONNECT_CANCEL:
                 handleConnectCancel(payload);
+                break;
+            case TYPE_MATCH_REPORT:
+                handleMatchReport(payload);
+                break;
+            case TYPE_MATCH_QUEUE_QUERY:
+                handleMatchQueueQuery(payload);
+                break;
+            case TYPE_MATCH_RELEASE_REQ:
+                handleMatchReleaseRequest(payload);
                 break;
             default:
                 if (plugin.isDebug()) {
@@ -275,6 +289,149 @@ public class UDPServer implements PlayerJoinListener.VirtualQueueHandler {
         if (plugin.isDebug()) {
             plugin.getLogger().info(languageManager.getLogMessage("udp-server-connect-cancel", "uuid", playerUuid.toString(), "source", serverName));
         }
+    }
+
+    /**
+     * 处理子服务器上报的对局状态（MINIGAME 模式）
+     * 格式: MATCH_REPORT|serverName|encryptedPayload
+     * payload: count|matchId,state,players,min,max,createdAt|...
+     */
+    private void handleMatchReport(String payload) {
+        MinigameMatchManager matchManager = plugin.getMinigameMatchManager();
+        if (matchManager == null) {
+            return;
+        }
+        int sepIndex = payload.indexOf(SEPARATOR);
+        if (sepIndex < 0) {
+            return;
+        }
+        String serverName = payload.substring(0, sepIndex);
+        String encryptedPayload = payload.substring(sepIndex + 1);
+
+        UDPClient client = getUDPClient(serverName);
+        if (client == null) {
+            plugin.getLogger().warning(languageManager.getLogMessage("udp-server-client-not-found", "server", serverName));
+            return;
+        }
+        String secretKey = client.getSecretKey();
+        if (secretKey == null || secretKey.isEmpty()) {
+            plugin.getLogger().warning(languageManager.getLogMessage("udp-server-no-key", "server", serverName));
+            return;
+        }
+
+        String decrypted;
+        try {
+            decrypted = CryptoUtil.decryptWithStringKey(encryptedPayload, secretKey);
+        } catch (Exception e) {
+            plugin.getLogger().warning(languageManager.getLogMessage("udp-server-decrypt-failed", "server", serverName, "error", e.getMessage()));
+            return;
+        }
+
+        // UDP 线程中不能直接操作 Bukkit API，调度回主线程处理
+        SchedulerUtil.runTask(plugin, () -> {
+            matchManager.handleMatchReport(serverName, decrypted);
+            playerJoinListener.processQueueNow();
+        });
+    }
+
+    /**
+     * 处理子服的排队队列查询请求（MATCH_QUEUE_QUERY）
+     * 格式: MATCH_QUEUE_QUERY|serverName|encryptedPayload
+     * payload: QUERY
+     * 响应: MATCH_QUEUE_INFO|serverName|encryptedPayload，payload: queueSize|uuid1,uuid2,...
+     */
+    private void handleMatchQueueQuery(String payload) {
+        int sepIndex = payload.indexOf(SEPARATOR);
+        if (sepIndex < 0) {
+            return;
+        }
+        String serverName = payload.substring(0, sepIndex);
+        String encryptedPayload = payload.substring(sepIndex + 1);
+
+        UDPClient client = getUDPClient(serverName);
+        if (client == null) {
+            plugin.getLogger().warning(languageManager.getLogMessage("udp-server-client-not-found", "server", serverName));
+            return;
+        }
+        String secretKey = client.getSecretKey();
+        if (secretKey == null || secretKey.isEmpty()) {
+            plugin.getLogger().warning(languageManager.getLogMessage("udp-server-no-key", "server", serverName));
+            return;
+        }
+        try {
+            CryptoUtil.decryptWithStringKey(encryptedPayload, secretKey);
+        } catch (Exception e) {
+            plugin.getLogger().warning(languageManager.getLogMessage("udp-server-decrypt-failed", "server", serverName, "error", e.getMessage()));
+            return;
+        }
+
+        // UDP 线程中不能直接操作 Bukkit API，调度回主线程构建队列快照后响应
+        SchedulerUtil.runTask(plugin, () -> {
+            String[] snapshot = playerJoinListener.buildQueueSnapshot();
+            String rawPayload = snapshot[0] + SEPARATOR + snapshot[1];
+            String encrypted;
+            try {
+                encrypted = CryptoUtil.encryptWithStringKey(rawPayload, client.getSecretKey());
+            } catch (Exception e) {
+                plugin.getLogger().warning(languageManager.getLogMessage("udp-server-encrypt-failed", "server", serverName, "error", e.getMessage()));
+                return;
+            }
+            client.sendRawData(TYPE_MATCH_QUEUE_INFO + SEPARATOR + serverName + SEPARATOR + encrypted);
+        });
+    }
+
+    /**
+     * 处理子服的指定玩家放行请求（MATCH_RELEASE_REQ）
+     * 格式: MATCH_RELEASE_REQ|serverName|encryptedPayload
+     * payload: playerUuid|matchId
+     */
+    private void handleMatchReleaseRequest(String payload) {
+        int sepIndex = payload.indexOf(SEPARATOR);
+        if (sepIndex < 0) {
+            return;
+        }
+        String serverName = payload.substring(0, sepIndex);
+        String encryptedPayload = payload.substring(sepIndex + 1);
+
+        UDPClient client = getUDPClient(serverName);
+        if (client == null) {
+            plugin.getLogger().warning(languageManager.getLogMessage("udp-server-client-not-found", "server", serverName));
+            return;
+        }
+        String secretKey = client.getSecretKey();
+        if (secretKey == null || secretKey.isEmpty()) {
+            plugin.getLogger().warning(languageManager.getLogMessage("udp-server-no-key", "server", serverName));
+            return;
+        }
+        String decrypted;
+        try {
+            decrypted = CryptoUtil.decryptWithStringKey(encryptedPayload, secretKey);
+        } catch (Exception e) {
+            plugin.getLogger().warning(languageManager.getLogMessage("udp-server-decrypt-failed", "server", serverName, "error", e.getMessage()));
+            return;
+        }
+
+        String[] parts = decrypted.split("\\|", 2);
+        if (parts.length < 2) {
+            return;
+        }
+        UUID playerUuid;
+        try {
+            playerUuid = UUID.fromString(parts[0]);
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning(languageManager.getLogMessage("udp-server-invalid-uuid", "uuid", parts[0]));
+            return;
+        }
+        String matchId = parts[1];
+
+        // UDP 线程中不能直接操作 Bukkit API，调度回主线程放行
+        SchedulerUtil.runTask(plugin, () -> {
+            boolean success = playerJoinListener.releaseSpecificPlayerToMatch(playerUuid, serverName, matchId);
+            if (!success) {
+                plugin.getLogger().warning(languageManager.getLogMessage("minigame-release-request-failed",
+                        "player", playerUuid.toString(), "match", matchId, "server", serverName));
+            }
+        });
     }
 
     /**

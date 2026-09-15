@@ -25,7 +25,7 @@ import java.util.concurrent.Executors;
 public class UDPClient {
 
     /** 协议版本号：用于跨插件通信版本兼容性检查 */
-    public static final String PROTOCOL_VERSION = "1.6.1";
+    public static final String PROTOCOL_VERSION = "1.7.0";
 
     private static final String TYPE_KEY_REQUEST = "KEY_REQ";
     private static final String TYPE_KEY_EXCHANGE = "KEY_EXCH";

@@ -4,6 +4,7 @@ language: zh_CN
 # 工作模式配置
 # PROXY 登录服模式（通过BungeeCord/Velocity跳转）
 # WORLD 登录世界模式（在同一服务器内创建登录世界）
+# MINIGAME 小游戏对局模式（登录服排队，小游戏服通过 UDP 上报对局状态，按对局放行玩家）
 # WORLD模式下还需要修改queue.spawn.world 配置项，指定出生世界
 # 注意：WORLD模式下需要依赖Worlds插件创建登录世界，并且设置名称不要和主世界一致
 # Worlds插件仓库： https://github.com/TheNextLvl-net/worlds
@@ -230,6 +231,35 @@ queue:
     material: BEACON
     # 物品显示名称
     name: "&a加入游戏"
+
+# 小游戏对局排队配置（仅在 work-mode: MINIGAME 时生效）
+# 登录服负责排队，小游戏服（需安装 LoginQueue2Online）通过 UDP 上报对局状态
+# 主插件根据对局空位与放行模式决定放行玩家，并将玩家跳转到小游戏服
+minigame:
+  # 放行玩家跳转的目标小游戏服务器名称（BungeeCord/Velocity 中的服务器名）
+  target-server: "minigames"
+  # 对局放行模式:
+  #   GATHER_FIRST - 凑齐优先：优先为能一次性凑满开局人数的对局放行，凑不齐整局时允许按空位补位（推荐）
+  #   GATHER_ONLY  - 凑齐模式：只有队列人数足够凑满对局开局人数时才放行
+  #   FILL_ONLY    - 补位模式：只要对局有空位就按队列顺序放行
+  release-mode: GATHER_FIRST
+  # 玩家加入对局的方式:
+  #   BATCH      - 批量加入：凑齐或补位时连续放行多名玩家，同时进入服务器
+  #   SEQUENTIAL - 逐个加入：每次只放行一名玩家，两次放行间隔 join-interval 秒，平滑进入服务器
+  join-mode: BATCH
+  # 逐个加入模式（SEQUENTIAL）下，两次放行之间的最小间隔（秒）
+  join-interval: 2
+  # 对局凑齐等待超时（秒）
+  # 超时后不再等待凑齐，对局内已有玩家时通知子服开始游戏，0 表示不启用超时通知
+  gather-timeout: 120
+  # 对局上报超时（秒）
+  # 超过此时间未收到某服务器的对局上报，则清除该服务器的对局记录（处理子服离线）
+  report-timeout: 15
+  # 已放行玩家确认宽限期（毫秒）
+  # 放行后在该时间窗口内，放行记录会计入对局人数，防止对局上报延迟导致超发
+  pending-grace: 10000
+  # 对局处理间隔（秒），定时检查对局超时并处理排队放行
+  process-interval: 1
 
 # 登录世界配置（仅在 work-mode: WORLD 时生效）
 login-world:

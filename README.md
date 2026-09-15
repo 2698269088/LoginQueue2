@@ -11,9 +11,10 @@
 - **多平台支持**：主插件同时兼容 Spigot、Paper、Folia 服务端；配套插件覆盖 Limbo、BungeeCord、Velocity 平台
 - **登录队列管理**：控制玩家进入主服务器的顺序，支持基于权限/名称/UUID/正则/权限组的优先级排序
 - **负载均衡**：多主服务器环境下自动选择最优服务器（最少玩家 / 最低负载 / 轮询 / 随机）
-- **双工作模式**：
+- **三种工作模式**：
   - **PROXY 模式**：传统群组服架构，通过代理端跳转
   - **WORLD 模式**：单服内创建独立登录世界，无需代理端
+  - **MINIGAME 模式**：小游戏对局排队，登录服统一排队后按对局空位跨服放行，玩家自动跳转小游戏服开局
 - **玩家限制**：限制排队中的玩家移动、交互、破坏方块，支持活动范围限制
 - **维度与出生点保护**：禁止进入下界/末地，禁用传送门，保护出生点区域
 - **性能节省模式**：禁用生物生成、时间流逝、天气更替
@@ -192,6 +193,47 @@ queue:
 - 登录世界与主世界完全隔离，互不干扰
 - 支持所有队列管理和玩家限制功能
 
+### 小游戏对局模式（MINIGAME）
+
+自 **1.7.0 版本**起，新增第三种工作模式，专为小游戏群组服设计：
+
+```yaml
+work-mode: MINIGAME
+```
+
+**架构与工作流程**：
+
+1. 小游戏服安装 `LoginQueue2Online` 并启用 `match.enabled`，通过 `/lq2match create` 创建对局
+2. 子服周期向登录服上报对局状态（对局 ID、状态、人数、开局/上限人数）
+3. 登录服按放行模式将排队玩家放行到有空位的对局，并通知子服记录玩家分配
+4. 玩家经代理自动跳转进入小游戏服，连入后计入对局人数
+5. 对局凑齐（或超时降级）后开局，结束对局后可开启下一局
+
+**放行模式（`minigame.release-mode`）**：
+
+| 模式 | 说明 |
+|------|------|
+| `GATHER_FIRST` | 凑齐优先：优先为能凑满开局人数的对局整批放行，凑不齐整局时允许按空位补位（推荐）|
+| `GATHER_ONLY` | 凑齐模式：只有队列人数足够凑满开局人数时才放行 |
+| `FILL_ONLY` | 补位模式：只要对局有空位就按队列顺序放行 |
+
+**加入模式（`minigame.join-mode`）**：
+
+| 模式 | 说明 |
+|------|------|
+| `BATCH` | 批量加入：凑齐或补位时连续放行多名玩家，同时进入服务器 |
+| `SEQUENTIAL` | 逐个加入：每次只放行一名玩家，两次放行间隔 `join-interval` 秒，平滑进入服务器 |
+
+**对局开始/结束控制**：
+
+- **对局状态**：`WAITING`（等待中，登录服可继续放行）→ `RUNNING`（进行中，不再放行）→ `ENDED`（已结束，可通过状态重置后重开）
+- **子服控制**：`/lq2match start <ID>`、`/lq2match end <ID>`、`/lq2match state <ID> <状态>`
+- **登录服远程控制**：`/logseq matchstart <服务器> <对局ID>`、`/logseq matchend <服务器> <对局ID>`
+- **凑齐超时**：对局等待超过 `gather-timeout` 秒仍未凑齐时不再等待，对局内已有玩家则自动通知子服开始
+- **控制台命令**：子服可配置对局开始/结束时以**控制台权限**执行的命令（`match.commands.on-start` / `on-end`），支持 `{match}`、`{players}`、`{min}`、`{max}`、`{reason}` 占位符
+
+**开发者 API**：子服 `LoginQueue2Online` 提供 `MinigameAPI`，同服小游戏插件可查询对局内等待连入/已连入玩家、查询登录服排队队列、请求放行指定玩家、开始/结束对局等（详见下文子服功能详解）。
+
 ---
 
 ## 配置
@@ -204,7 +246,7 @@ queue:
 # 插件语言（支持 zh_CN、zh_TW、en_US）
 language: zh_CN
 
-# 工作模式: PROXY（代理模式）或 WORLD（登录世界模式）
+# 工作模式: PROXY（代理模式）、WORLD（登录世界模式）或 MINIGAME（小游戏对局模式）
 work-mode: PROXY
 
 # 是否启用 BungeeCord 通道扩展（用于跨服转移，WORLD 模式下无效）
@@ -346,6 +388,25 @@ scoreboard:
     - "main"
     - "main1"
     - "main2"
+
+# 小游戏对局排队配置（仅在 work-mode: MINIGAME 时生效）
+minigame:
+  # 放行玩家跳转的目标小游戏服务器名称
+  target-server: "minigames"
+  # 对局放行模式: GATHER_FIRST（凑齐优先） / GATHER_ONLY（凑齐模式） / FILL_ONLY（补位模式）
+  release-mode: GATHER_FIRST
+  # 玩家加入方式: BATCH（批量加入） / SEQUENTIAL（逐个加入）
+  join-mode: BATCH
+  # 逐个加入模式下两次放行之间的最小间隔（秒）
+  join-interval: 2
+  # 对局凑齐等待超时（秒），超时后不再等待凑齐，0 表示不启用超时通知
+  gather-timeout: 120
+  # 对局上报超时（秒），超时未上报则清除该服务器的对局记录
+  report-timeout: 15
+  # 已放行玩家确认宽限期（毫秒），防止对局上报延迟导致超发
+  pending-grace: 10000
+  # 对局处理间隔（秒）
+  process-interval: 1
 ```
 
 ### LoginQueue2Online（子服务器）
@@ -388,6 +449,19 @@ server-list:
   - "main"
   - "minigames"
 
+# 小游戏对局配置（工作模式为 MINIGAME 时启用，向登录服上报对局状态）
+match:
+  enabled: false
+  # 对局状态上报间隔（秒）
+  report-interval: 3
+  # 已放行玩家连入超时（秒），超时未连入的分配将被移除并释放名额
+  assign-timeout: 30
+  # 对局开始/结束时以控制台权限执行的命令
+  # 占位符: {match} 对局ID, {players} 当前人数, {min} 开局人数, {max} 最大人数, {reason} 触发原因
+  commands:
+    on-start: []
+    on-end: []
+
 messages:
   # 虚拟排队状态提示
   virtual-queue-status: "&a[队列] &f当前排在第 &e{position} &f位，目标服在线 &e{online}&f/&e{max}&f。"
@@ -408,6 +482,9 @@ messages:
 | `/logseq reload` | `loginqueue2.admin.reload` | 重载配置文件和语言文件 |
 | `/logseq debug` | `loginqueue2.admin.debug` | 切换调试模式（输出详细日志） |
 | `/logseq info` | `loginqueue2.admin.info` | 查看所有主服务器详细信息 |
+| `/logseq matches` | `loginqueue2.admin.status` | 查看小游戏对局列表（MINIGAME 模式） |
+| `/logseq matchstart <服务器> <对局ID>` | `loginqueue2.admin.status` | 通知小游戏服开始指定对局（MINIGAME 模式） |
+| `/logseq matchend <服务器> <对局ID>` | `loginqueue2.admin.status` | 通知小游戏服结束指定对局（MINIGAME 模式） |
 | `/logseq help` | - | 显示帮助信息 |
 | `/join` | - | 手动加入排队队列（非自动排队模式时使用） |
 | `/register <密码> <确认密码>` | - | 注册账号（内置认证启用时） |
@@ -446,8 +523,11 @@ messages:
 |------|------|------|
 | `/connect <服务器名> [玩家名]` | `loginqueue2online.connect` | 加入目标服务器队列；若启用虚拟排队，则通过 UDP 向主插件排队 |
 | `/connect <服务器名> <玩家名>` | `loginqueue2online.connect.others` | 将其他玩家加入目标服务器队列 |
+| `/lq2match <子命令>` | `loginqueue2online.match` | 小游戏对局管理（MINIGAME 模式），子命令见下 |
 
-> 该插件除 `/connect` 外无其他指令。启动后自动通过 UDP 向登录服上报服务器状态信息。
+**`/lq2match` 子命令**（工作模式为 MINIGAME 时可用）：`list` 查看对局、`create <最小人数> [最大人数]` 创建对局、`remove <ID>` 删除对局、`state <ID> <WAITING|RUNNING|ENDED>` 设置状态、`players <ID> [数量|auto]` 查看/设置人数、`start <ID>` 开始对局、`end <ID>` 结束对局
+
+> 该插件默认仅提供 `/connect`；工作模式为 MINIGAME 时额外提供 `/lq2match` 对局管理指令。启动后自动通过 UDP 向登录服上报服务器状态信息。
 
 ---
 
@@ -474,6 +554,7 @@ messages:
 |------|------|
 | `loginqueue2online.connect` | 允许使用 `/connect` 加入目标服务器队列 |
 | `loginqueue2online.connect.others` | 允许为其他玩家使用 `/connect` |
+| `loginqueue2online.match` | 允许使用 `/lq2match` 管理小游戏对局 |
 
 ---
 
@@ -496,6 +577,7 @@ messages:
 - **双模式支持**：支持 BungeeCord 原生通道或自定义通道转移玩家
 - **认证系统**：内置可选的注册/登录/改密码功能，支持 AuthMe 兼容模式
 - **WORLD 模式**：单服内创建登录世界，无需代理端
+- **MINIGAME 模式**：小游戏对局排队，登录服按对局空位跨服放行玩家，支持对局状态管理与开局/结束控制
 
 **负载均衡策略**:
 - `LEAST_PLAYERS`: 选择在线人数最少的服务器
@@ -530,8 +612,15 @@ messages:
 - 使用 AES 加密通信，支持预共享密钥
 - 自动定期向登录服广播状态信息
 - **/connect 跨服虚拟排队**：子服玩家可通过 `/connect <目标服务器>` 向登录服主插件发起虚拟排队请求，排到后由登录服通知子服完成自动跳转
+- **小游戏对局管理（MINIGAME 模式）**：启用 `match.enabled` 后，通过 `/lq2match` 指令或 `MinigameAPI` 创建和管理对局，向登录服上报对局状态并接收放行/开局/结束通知，支持开局与结束时以控制台权限执行自定义命令（`match.commands`）
 
-**特点**: 除 `/connect` 外无其他指令，配置后自动运行
+**开发者 API（`MinigameAPI`）**：同服小游戏插件可通过 `MinigameAPI.get()` 获取实例，能力包括：
+- 对局管理：创建/删除/开始/结束对局、设置状态与人数
+- 对局查询：查询对局内等待连入/已连入玩家、玩家当前所在对局
+- 排队查询：查询登录服排队队列人数与玩家列表（缓存同步）
+- 请求放行：请求登录服将排队中的指定玩家放行进入指定对局
+
+**特点**: 默认仅提供 `/connect`，MINIGAME 模式下额外提供 `/lq2match`；配置后自动运行
 
 > **为什么需要它？** 主插件可以通过 BungeeCord 原生通道获取子服务器的在线人数，但 **无法获取远程服务器的 TPS**。`LoginQueue2Online` 通过 UDP 将 TPS 等详细状态上报给登录服，使负载均衡策略 `LEAST_LOAD` 能够正常工作。如果你只使用 `LEAST_PLAYERS` 或 `ROUND_ROBIN` 策略，且不需要 TPS 监控，理论上可以省略此插件。
 
@@ -572,6 +661,7 @@ messages:
 | `loginqueue2:serverinfo` | 查询/上报服务器状态信息 | BC 优先模式（需要 BC/VC 插件） |
 | `loginqueue2:loginsuccess` | 登录成功通知通道 | 认证系统相关 |
 | `UDP` | 直接 UDP 通信获取服务器状态 | UDP 优先模式（需要 Online 插件） |
+| `UDP（小游戏对局）` | 对局上报、跨服放行、开局/结束通知、排队队列查询（`MATCH_REPORT`、`MATCH_JOIN`、`MATCH_START`、`MATCH_END`、`MATCH_QUEUE_QUERY` 等） | MINIGAME 模式（需要 Online 插件） |
 
 ---
 

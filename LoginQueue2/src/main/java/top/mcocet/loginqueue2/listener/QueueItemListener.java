@@ -210,6 +210,13 @@ public class QueueItemListener implements Listener {
             return;
         }
 
+        // MINIGAME 模式下直接入队，由对局上报驱动放行，不使用服务器选择菜单
+        if (plugin.isMinigameMode()) {
+            listener.addPlayerToQueue(player);
+            player.sendMessage(languageManager.getMessage("joined-queue"));
+            return;
+        }
+
         // 如果启用了 UDP 服务器选择菜单，打开菜单让玩家选择目标服务器
         if (ServerSelectorMenu.isEnabled(plugin)) {
             // 多服务器独立队列模式下，如果玩家已在队列中则提示

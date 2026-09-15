@@ -22,6 +22,9 @@ public class UDPClient {
 
     private static final String TYPE_CONNECT_REQUEST = "CONN_REQ";
     private static final String TYPE_CONNECT_CANCEL = "CONN_CANCEL";
+    private static final String TYPE_MATCH_REPORT = "MATCH_REPORT";
+    private static final String TYPE_MATCH_QUEUE_QUERY = "MATCH_QUEUE_QUERY";
+    private static final String TYPE_MATCH_RELEASE_REQ = "MATCH_RELEASE_REQ";
     private static final String SEPARATOR = "|";
 
     private final LoginQueue2Online plugin;
@@ -132,6 +135,87 @@ public class UDPClient {
                 future.complete(true);
             } catch (Exception e) {
                 plugin.getLogger().warning("发送取消排队 UDP 请求失败: " + e.getMessage());
+                future.complete(false);
+            }
+        });
+        return future;
+    }
+
+    /**
+     * 异步发送对局状态上报（MATCH_REPORT）
+     *
+     * @param rawPayload 明文上报载荷（count|id,state,players,min,max,createdAt|...），空对局时传 "0"
+     * @return CompletableFuture，成功返回 true
+     */
+    public CompletableFuture<Boolean> sendMatchReport(String rawPayload) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        if (executor == null || !initialized) {
+            future.complete(false);
+            return future;
+        }
+        executor.submit(() -> {
+            try {
+                String encrypted = CryptoUtil.encryptWithStringKey(rawPayload, secretKey);
+                String request = TYPE_MATCH_REPORT + SEPARATOR + serverName + SEPARATOR + encrypted;
+                sendPacket(request);
+                future.complete(true);
+            } catch (Exception e) {
+                plugin.getLogger().warning("发送对局上报失败: " + e.getMessage());
+                future.complete(false);
+            }
+        });
+        return future;
+    }
+
+    /**
+     * 异步发送排队队列查询请求（MATCH_QUEUE_QUERY）
+     * 主插件收到后回推 MATCH_QUEUE_INFO，结果缓存在主类中供 API 读取
+     *
+     * @return CompletableFuture，成功返回 true
+     */
+    public CompletableFuture<Boolean> sendQueueQuery() {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        if (executor == null || !initialized) {
+            future.complete(false);
+            return future;
+        }
+        executor.submit(() -> {
+            try {
+                String encrypted = CryptoUtil.encryptWithStringKey("QUERY", secretKey);
+                String request = TYPE_MATCH_QUEUE_QUERY + SEPARATOR + serverName + SEPARATOR + encrypted;
+                sendPacket(request);
+                future.complete(true);
+            } catch (Exception e) {
+                plugin.getLogger().warning("发送队列查询请求失败: " + e.getMessage());
+                future.complete(false);
+            }
+        });
+        return future;
+    }
+
+    /**
+     * 异步发送指定玩家放行请求（MATCH_RELEASE_REQ）
+     * 请求主插件将排队中的指定玩家放行进入本服指定对局
+     *
+     * @param playerUuid 要放行的玩家 UUID
+     * @param matchId    目标对局 ID
+     * @return CompletableFuture，成功返回 true
+     */
+    public CompletableFuture<Boolean> sendMatchReleaseRequest(UUID playerUuid, String matchId) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        if (executor == null || !initialized) {
+            future.complete(false);
+            return future;
+        }
+        executor.submit(() -> {
+            try {
+                String rawPayload = playerUuid.toString() + SEPARATOR + matchId;
+                String encrypted = CryptoUtil.encryptWithStringKey(rawPayload, secretKey);
+                String request = TYPE_MATCH_RELEASE_REQ + SEPARATOR + serverName + SEPARATOR + encrypted;
+                sendPacket(request);
+                future.complete(true);
+            } catch (Exception e) {
+                plugin.getLogger().warning("发送放行请求失败: " + e.getMessage());
                 future.complete(false);
             }
         });

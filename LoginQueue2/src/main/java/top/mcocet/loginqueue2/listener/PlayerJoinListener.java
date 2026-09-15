@@ -17,6 +17,7 @@ import top.mcocet.loginqueue2.auth.AuthManager;
 import top.mcocet.loginqueue2.auth.AuthRestrictionListener;
 import top.mcocet.loginqueue2.auth.AuthMeCompatManager;
 import top.mcocet.loginqueue2.bungee.BungeeMessenger;
+import top.mcocet.loginqueue2.match.MinigameMatchManager;
 import top.mcocet.loginqueue2.queue.PriorityManager;
 import top.mcocet.loginqueue2.util.LanguageManager;
 import top.mcocet.loginqueue2.util.SchedulerUtil;
@@ -45,6 +46,8 @@ public class PlayerJoinListener implements Listener {
     private final Set<UUID> allowedPlayers = new HashSet<>();
     // 队列手动暂停状态
     private boolean queuePaused = false;
+    // 小游戏逐个加入模式（SEQUENTIAL）下，上次放行玩家的时间戳，用于 join-interval 节流
+    private long lastMinigameReleaseTime = 0;
     // 虚拟队列处理器（当虚拟玩家被放行时回调）
     private VirtualQueueHandler virtualQueueHandler;
 
@@ -226,6 +229,25 @@ public class PlayerJoinListener implements Listener {
                 return;
             }
 
+            // MINIGAME 模式下不需要检查 BungeeCord 主服务器，直接入队等待对局空位
+            if (plugin.isMinigameMode()) {
+                // 已在队列中则不再重复添加
+                if (isInQueue(uuid)) {
+                    return;
+                }
+
+                // 计算玩家优先级并入队
+                int priority = priorityManager.calculatePriority(player);
+                waitingQueue.offer(new QueueEntry(uuid, priority, System.currentTimeMillis()));
+
+                // 通知玩家排队位置
+                sendQueueStatus(player, uuid);
+
+                // 尝试放行队列中的玩家
+                processQueue();
+                return;
+            }
+
             // 先判断主服务器是否在线（缓存中有数据时直接判断）
             if (messenger.isMainServerOnline()) {
                 // 已在队列中则不再重复添加
@@ -295,6 +317,16 @@ public class PlayerJoinListener implements Listener {
             }
             online = mainWorld != null ? mainWorld.getPlayers().size() : 0;
             max = plugin.getConfig().getInt("queue.max-online", 50);
+        } else if (plugin.isMinigameMode()) {
+            // MINIGAME 模式：显示可加入的对局数
+            MinigameMatchManager matchManager = plugin.getMinigameMatchManager();
+            int joinable = matchManager != null ? matchManager.getJoinableCount() : 0;
+            int waitingMatches = matchManager != null ? matchManager.getWaitingMatchCount() : 0;
+            player.sendMessage(languageManager.getMessage("minigame-waiting",
+                    "position", String.valueOf(position),
+                    "matches", String.valueOf(joinable),
+                    "waiting", String.valueOf(waitingMatches)));
+            return;
         } else if (isPerServerQueueMode()) {
             // 多服独立队列模式：显示目标服务器状态
             String targetServer = playerTargetServerMap.get(uuid);
@@ -351,6 +383,10 @@ public class PlayerJoinListener implements Listener {
             loginWorldManager.savePlayerQuitLocation(player);
         }
         allowedPlayers.remove(uuid);
+        // MINIGAME 模式：移除该玩家的放行记录，释放对局名额
+        if (plugin.getMinigameMatchManager() != null) {
+            plugin.getMinigameMatchManager().removePending(uuid);
+        }
         if (isPerServerQueueMode()) {
             String targetServer = playerTargetServerMap.remove(uuid);
             if (targetServer != null) {
@@ -447,6 +483,13 @@ public class PlayerJoinListener implements Listener {
 
     public void setVirtualQueueHandler(VirtualQueueHandler handler) {
         this.virtualQueueHandler = handler;
+    }
+
+    /**
+     * 立即触发一次队列处理（供对局上报等外部事件调用）
+     */
+    public void processQueueNow() {
+        processQueue();
     }
 
     /**
@@ -576,6 +619,15 @@ public class PlayerJoinListener implements Listener {
             // WORLD 模式：传送到主世界
             // 背包恢复由 WorldInventoryListener 在 PlayerChangedWorldEvent 中处理
             loginWorldManager.teleportToMainWorld(player);
+        } else if (plugin.isMinigameMode()) {
+            // MINIGAME 模式：跳转到配置的小游戏服务器
+            MinigameMatchManager matchManager = plugin.getMinigameMatchManager();
+            String target = matchManager != null ? matchManager.getDefaultTargetServer() : null;
+            if (target != null && !target.isEmpty()) {
+                messenger.connectPlayerToServer(player, target);
+            } else {
+                messenger.connectToOptimalServer(player);
+            }
         } else if (isPerServerQueueMode()) {
             // 多服独立队列模式：跳转到目标服务器
             String targetServer = playerTargetServerMap.get(player.getUniqueId());
@@ -732,6 +784,12 @@ public class PlayerJoinListener implements Listener {
         LoginWorldManager loginWorldManager = plugin.getLoginWorldManager();
         boolean worldMode = loginWorldManager != null && loginWorldManager.isWorldMode();
 
+        // MINIGAME 模式：按对局排队放行
+        if (plugin.isMinigameMode()) {
+            processMinigameQueue();
+            return;
+        }
+
         if (isPerServerQueueMode()) {
             processPerServerQueues();
             return;
@@ -830,6 +888,220 @@ public class PlayerJoinListener implements Listener {
             }
             availableSlots--;
         }
+    }
+
+    /**
+     * MINIGAME 模式队列处理：按对局放行玩家
+     *
+     * 第一轮（凑齐优先，GATHER_FIRST / GATHER_ONLY）：
+     *   对未达开局人数的对局，若队列人数足够一次凑齐则整批放行
+     * 第二轮（补位放行，GATHER_FIRST / FILL_ONLY / 超时降级）：
+     *   按创建时间顺序将队列玩家补入有空位的对局
+     *
+     * 加入方式（minigame.join-mode）：
+     *   BATCH      - 批量加入：同一轮次内连续放行多名玩家
+     *   SEQUENTIAL - 逐个加入：每次处理最多放行一名玩家，
+     *                两次放行之间至少间隔 minigame.join-interval 秒
+     */
+    private void processMinigameQueue() {
+        MinigameMatchManager matchManager = plugin.getMinigameMatchManager();
+        if (matchManager == null) {
+            return;
+        }
+
+        if (queuePaused) {
+            if (plugin.isDebug()) {
+                plugin.getLogger().info(languageManager.getLogMessage("queue-paused-manual-log"));
+            }
+            return;
+        }
+
+        if (waitingQueue.isEmpty()) {
+            return;
+        }
+
+        // 逐个加入模式：受 join-interval 节流，且每次处理最多放行一名玩家
+        int releaseBudget;
+        if (matchManager.isSequentialJoin()) {
+            long intervalMillis = matchManager.getJoinInterval() * 1000L;
+            if (System.currentTimeMillis() - lastMinigameReleaseTime < intervalMillis) {
+                return;
+            }
+            releaseBudget = 1;
+        } else {
+            releaseBudget = Integer.MAX_VALUE;
+        }
+
+        List<MinigameMatchManager.MatchInfo> joinable = matchManager.getJoinableMatches();
+        if (joinable.isEmpty()) {
+            if (plugin.isDebug()) {
+                plugin.getLogger().info(languageManager.getLogMessage("minigame-no-joinable",
+                        "queueSize", String.valueOf(waitingQueue.size())));
+            }
+            return;
+        }
+
+        // 第一轮：凑齐优先
+        if (matchManager.isGatherEnabled()) {
+            for (MinigameMatchManager.MatchInfo match : joinable) {
+                if (waitingQueue.isEmpty() || releaseBudget <= 0) {
+                    break;
+                }
+                int current = matchManager.effectivePlayers(match);
+                if (current >= match.getMinPlayers()) {
+                    continue;
+                }
+                int needed = match.getMinPlayers() - current;
+                // 批量模式要求队列人数足以一次凑齐；逐个模式每次只放一名，队列非空即可
+                int batch = Math.min(needed, releaseBudget);
+                if (needed > 0 && waitingQueue.size() >= batch) {
+                    int released = releasePlayersToMatch(match, batch);
+                    releaseBudget -= released;
+                }
+            }
+        }
+
+        // 第二轮：补位放行（超时的对局不再等待凑齐，直接降级为补位）
+        for (MinigameMatchManager.MatchInfo match : joinable) {
+            if (waitingQueue.isEmpty() || releaseBudget <= 0) {
+                break;
+            }
+            boolean fillAllowed = matchManager.isFillEnabled() || match.isTimeoutFired();
+            if (!fillAllowed) {
+                continue;
+            }
+            int slots = match.getMaxPlayers() - matchManager.effectivePlayers(match);
+            while (slots > 0 && !waitingQueue.isEmpty() && releaseBudget > 0) {
+                int released = releasePlayersToMatch(match, Math.min(1, releaseBudget));
+                if (released <= 0) {
+                    break;
+                }
+                slots -= released;
+                releaseBudget -= released;
+            }
+        }
+    }
+
+    /**
+     * 将队列中的玩家放行进入指定对局
+     *
+     * @return 实际放行的玩家数
+     */
+    private int releasePlayersToMatch(MinigameMatchManager.MatchInfo match, int count) {
+        MinigameMatchManager matchManager = plugin.getMinigameMatchManager();
+        int released = 0;
+        while (released < count) {
+            Player player = pollNextOnlinePlayer();
+            if (player == null) {
+                break;
+            }
+
+            matchManager.addPending(match, player.getUniqueId());
+            matchManager.sendMatchJoin(match.getServerName(), match.getMatchId(), player.getUniqueId());
+
+            allowedPlayers.add(player.getUniqueId());
+            player.sendMessage(languageManager.getMessage("entering"));
+            if (plugin.getQueueItemListener() != null) {
+                plugin.getQueueItemListener().removeAllQueueItems(player);
+            }
+
+            messenger.connectPlayerToServer(player, match.getServerName());
+
+            if (plugin.isDebug()) {
+                plugin.getLogger().info(languageManager.getLogMessage("minigame-player-released",
+                        "player", player.getName(), "match", match.getMatchId(), "server", match.getServerName()));
+            }
+            released++;
+            lastMinigameReleaseTime = System.currentTimeMillis();
+        }
+        return released;
+    }
+
+    /**
+     * 按子服请求放行指定玩家进入指定对局（MATCH_RELEASE_REQ）
+     * 将玩家从等待队列中直接取出放行并跳转，不受队列位置与加入模式限制
+     * 必须在主线程调用
+     *
+     * @param uuid       要放行的玩家
+     * @param serverName 目标子服名称
+     * @param matchId    目标对局 ID
+     * @return 是否成功放行
+     */
+    public boolean releaseSpecificPlayerToMatch(UUID uuid, String serverName, String matchId) {
+        if (queuePaused) {
+            return false;
+        }
+        MinigameMatchManager matchManager = plugin.getMinigameMatchManager();
+        if (matchManager == null) {
+            return false;
+        }
+        MinigameMatchManager.MatchInfo match = matchManager.getMatch(serverName, matchId);
+        if (match == null) {
+            return false;
+        }
+        Player player = plugin.getServer().getPlayer(uuid);
+        if (player == null || !player.isOnline()) {
+            return false;
+        }
+
+        // 从等待队列中移除（存在时），不受队列位置限制
+        waitingQueue.removeIf(entry -> entry.getUuid().equals(uuid));
+
+        matchManager.addPending(match, uuid);
+        matchManager.sendMatchJoin(serverName, matchId, uuid);
+
+        allowedPlayers.add(uuid);
+        player.sendMessage(languageManager.getMessage("entering"));
+        if (plugin.getQueueItemListener() != null) {
+            plugin.getQueueItemListener().removeAllQueueItems(player);
+        }
+        messenger.connectPlayerToServer(player, serverName);
+
+        if (plugin.isDebug()) {
+            plugin.getLogger().info(languageManager.getLogMessage("minigame-release-request",
+                    "player", player.getName(), "match", matchId, "server", serverName));
+        }
+        return true;
+    }
+
+    /**
+     * 构建排队队列快照（供 MATCH_QUEUE_QUERY 响应）
+     *
+     * @return 数组: [0]=队列总人数, [1]=逗号分隔的玩家 UUID（最多 100 个，可能为空字符串）
+     */
+    public String[] buildQueueSnapshot() {
+        int size = waitingQueue.size();
+        StringBuilder sb = new StringBuilder();
+        int limit = Math.min(size, 100);
+        int index = 0;
+        for (QueueEntry entry : waitingQueue) {
+            if (index >= limit) {
+                break;
+            }
+            if (index > 0) {
+                sb.append(',');
+            }
+            sb.append(entry.getUuid().toString());
+            index++;
+        }
+        return new String[]{String.valueOf(size), sb.toString()};
+    }
+
+    /**
+     * 从队列头部取出下一个在线玩家（跳过已离线的队列记录）
+     */
+    private Player pollNextOnlinePlayer() {
+        while (!waitingQueue.isEmpty()) {
+            QueueEntry entry = waitingQueue.poll();
+            if (entry == null) {
+                break;
+            }
+            Player player = plugin.getServer().getPlayer(entry.getUuid());
+            if (player != null && player.isOnline()) {
+                return player;
+            }
+        }
+        return null;
     }
 
     private void processPerServerQueues() {

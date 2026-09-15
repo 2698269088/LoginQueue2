@@ -9,10 +9,18 @@ commands:
     usage: /connect <服务器名> [玩家名]
     permission: loginqueue2online.connect
     permission-message: §c你没有权限使用此指令。
+  lq2match:
+    description: 小游戏对局管理
+    usage: /lq2match <list|create|remove|state|players|start>
+    permission: loginqueue2online.match
+    permission-message: §c你没有权限使用此指令。
 permissions:
   loginqueue2online.connect:
     description: 允许使用 /connect 指令
     default: true
   loginqueue2online.connect.others:
     description: 允许使用 /connect 指令指定其他玩家
+    default: op
+  loginqueue2online.match:
+    description: 允许使用 /lq2match 对局管理指令
     default: op

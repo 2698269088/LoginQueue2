@@ -6,7 +6,7 @@
 
     <groupId>top.mcocet</groupId>
     <artifactId>LoginQueue2-parent</artifactId>
-    <version>1.6.1</version>
+    <version>1.7.0</version>
     <packaging>pom</packaging>
 
     <name>LoginQueue Parent</name>
